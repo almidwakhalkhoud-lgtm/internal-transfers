@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import type { Browser } from "playwright";
 import bwipjs from "bwip-js/node";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -64,7 +64,9 @@ export async function documentHtml(t: DocumentData) {
 }
 // Serverless hosts have no Playwright browser download; they use the
 // compressed Chromium build from @sparticuz/chromium instead.
+// Playwright is loaded on demand so the rest of the API never depends on it.
 async function launchBrowser() {
+  const { chromium } = await import("playwright");
   if (!process.env.VERCEL) return chromium.launch({ headless: true });
   const { default: serverless } = await import("@sparticuz/chromium");
   return chromium.launch({
@@ -75,7 +77,7 @@ async function launchBrowser() {
 }
 export async function generatePdf(t: DocumentData) {
   const release = await acquirePdfSlot();
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let browser: Browser | undefined;
   try {
     browser = await launchBrowser();
     const page = await browser.newPage();

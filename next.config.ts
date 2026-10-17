@@ -6,6 +6,9 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     "/api/**": [
       "./node_modules/@sparticuz/chromium/bin/**",
+      // Playwright reads browsers.json and other files by computed paths.
+      "./node_modules/playwright/**",
+      "./node_modules/playwright-core/**",
       "./public/fonts/**",
     ],
   },
