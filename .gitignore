@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next-test/
+.env*
+!.env.example
+.postgres/
+test-results/
+playwright-report/
+output/
+__pycache__/
+*.tsbuildinfo
+data/sources/
+YekanBakh*/
+ITEMS.xls
+MA-3210.pdf
+logo.jpeg

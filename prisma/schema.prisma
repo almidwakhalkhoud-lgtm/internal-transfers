@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum Approval {
+  PENDING
+  APPROVED
+  REJECTED
+  RECEIVED
+}
+
+enum ConfirmationStatus {
+  CONFIRMED
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String
+  password  String
+  role      Role       @default(STAFF)
+  active    Boolean    @default(true)
+  locale    String     @default("en")
+  accessHash String?   @unique
+  accessVerifier String?
+  menus     String[]   @default(["dashboard", "new-transfer", "transfers", "products", "locations"])
+  locations Location[]
+  sessions  Session[]
+  transfers Transfer[]
+}
+
+model Session {
+  id      String   @id
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires DateTime
+}
+
+model LoginAttempt {
+  key      String   @id
+  attempts Int      @default(0)
+  until    DateTime
+}
+
+model Location {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  active Boolean @default(true)
+  users  User[]
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  description String
+  units       String[]
+  active      Boolean   @default(true)
+  source      String
+  barcodes    Barcode[]
+  updatedAt   DateTime  @updatedAt
+}
+
+model Barcode {
+  value     String  @id
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model CatalogConflict {
+  id        String   @id @default(cuid())
+  code      String
+  existing  Json
+  proposed  Json
+  source    String
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Sequence {
+  id     String @id @default("transfer")
+  value  Int    @default(0)
+  prefix String @default("TRF")
+}
+
+model Transfer {
+  id            String             @id @default(cuid())
+  number        String             @unique
+  key           String             @unique
+  creatorId     String
+  creatorName   String             @default("")
+  creator       User               @relation(fields: [creatorId], references: [id])
+  sourceId      String
+  destinationId String
+  source        String
+  destination   String
+  date          DateTime
+  remarks       String
+  confirmedAt   DateTime           @default(now())
+  status        ConfirmationStatus @default(CONFIRMED)
+  approval      Approval           @default(PENDING)
+  lines         Json
+  total         Decimal            @db.Decimal(20, 3)
+  pdf           Bytes?
+  pdfHash       String?
+  pdfError      Boolean            @default(false)
+
+  @@index([creatorId, confirmedAt])
+  @@index([approval, confirmedAt])
+}
+
+model Draft {
+  id        String   @id
+  number    String   @unique
+  userId    String
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Audit {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String
+  detail    Json
+  createdAt DateTime @default(now())
+}

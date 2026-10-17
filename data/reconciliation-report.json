@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-17",
+  "primarySha256": "48e2a178ac973656f1c2852ca0f5c3166e0e67f87872838b3f83f5a872400e8d",
+  "primaryRows": 3278,
+  "primaryImported": 3277,
+  "websiteAdded": 22,
+  "enriched": 49,
+  "conflicts": 1605,
+  "skipped": [
+    {
+      "code": "3277",
+      "reason": "Missing description"
+    }
+  ],
+  "stores": [
+    {
+      "store": "Order / All Stores",
+      "rows": 1236,
+      "sha256": "8fdb437bcaa6cf9720534ea81fde1b47831501e3d4ed546fd446e1c28b12b300"
+    },
+    {
+      "store": "HyperMarket",
+      "rows": 816,
+      "sha256": "c4da5bf294f5779c635301e585b54b61fa7583790db2f1ed5c6a9b9b7382b6a2"
+    },
+    {
+      "store": "VAN SALES STORE",
+      "rows": 226,
+      "sha256": "b813b2a000be2900d078bfdbb8381fa5d73ed22dab3573b86a18051d01e91b01"
+    },
+    {
+      "store": "SMOKING",
+      "rows": 326,
+      "sha256": "27d0bd9fd373c5629dfd8a955b4bb240f1df69937c60a3a13888d75fa633321d"
+    }
+  ],
+  "missingBarcodeRows": 1236
+}

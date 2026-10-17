@@ -1,0 +1,9 @@
+node_modules
+.next
+.next-test
+.postgres
+output
+data/sources
+playwright-report
+test-results
+YekanBakh*
