@@ -4,7 +4,7 @@ import { Form } from "@/components/form";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { DatePicker } from "./date-picker";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Skeleton } from "./skeleton";
 import {
   ArrowRight,
@@ -18,6 +18,7 @@ import {
   Upload,
   SlidersHorizontal,
   FileText,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
@@ -445,6 +446,22 @@ export function DetailPage({ id }: { id: string }) {
     Summary & { lines: SnapshotLine[]; remarks: string; pdfReady: boolean }
   >(`transfers/${id}`);
   const [err, setErr] = useState("");
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  async function remove() {
+    setBusy(true);
+    try {
+      await api(`transfers/${id}`, { reason }, "DELETE");
+      router.push("/transfers");
+      router.refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+      setDeleting(false);
+      setBusy(false);
+    }
+  }
   return (
     <>
       <PageTitle
@@ -493,9 +510,66 @@ export function DetailPage({ id }: { id: string }) {
                     )}
                   </button>
                 ))}
+                <button
+                  className="button danger"
+                  onClick={() => {
+                    setReason("");
+                    setDeleting(true);
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {t("Delete transfer")}
+                </button>
               </div>
             )}
           </div>
+          {deleting && (
+            <Modal
+              title="Delete transfer"
+              onClose={() => !busy && setDeleting(false)}
+            >
+              <p className="muted">
+                {t(
+                  "The confirmed transfer and its saved PDF will be permanently deleted. A full copy is kept in the audit log.",
+                )}
+              </p>
+              <dl className="review-grid">
+                <dt>{t("Transfer number")}</dt>
+                <dd dir="ltr">{data.number}</dd>
+                <dt>{t("Route")}</dt>
+                <dd>
+                  {data.source} → {data.destination}
+                </dd>
+              </dl>
+              <label>
+                {t("Reason (optional)")}
+                <textarea
+                  value={reason}
+                  maxLength={500}
+                  rows={3}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </label>
+              <div className="modal-actions">
+                <button
+                  className="button"
+                  data-initial-focus
+                  disabled={busy}
+                  onClick={() => setDeleting(false)}
+                >
+                  {t("Cancel")}
+                </button>
+                <button
+                  className="button danger-solid"
+                  disabled={busy}
+                  onClick={remove}
+                >
+                  <Trash2 size={16} />
+                  {t(busy ? "Please wait…" : "Delete transfer")}
+                </button>
+              </div>
+            </Modal>
+          )}
           <section className="card">
             <div className="table-scroll">
               <table className="data-table">

@@ -333,6 +333,19 @@ export const fa: Record<string, string> = {
   ADMIN_PROVISIONED: "ایجاد مدیر",
   SOURCES_RECONCILED: "تطبیق منابع",
   CONFLICTING_UNITS_HELD_FOR_REVIEW: "واحدها در انتظار بررسی",
+  DRAFT_DELETED: "حذف پیش‌نویس",
+  TRANSFER_DELETED: "حذف انتقال",
+  "Delete draft": "حذف پیش‌نویس",
+  "Draft deleted": "پیش‌نویس حذف شد",
+  "Draft not found": "پیش‌نویس پیدا نشد",
+  "This saved draft and all of its items will be removed. Its number will not be reused.":
+    "این پیش‌نویس و همهٔ اقلام آن حذف می‌شود. شمارهٔ آن دوباره استفاده نخواهد شد.",
+  "Delete transfer": "حذف انتقال",
+  "The confirmed transfer and its saved PDF will be permanently deleted. A full copy is kept in the audit log.":
+    "انتقال تأییدشده و PDF ذخیره‌شدهٔ آن برای همیشه حذف می‌شود. یک نسخهٔ کامل در گزارش رویدادها نگهداری می‌شود.",
+  "Reason (optional)": "دلیل (اختیاری)",
+  "Transfer changed. Refresh and retry.":
+    "انتقال تغییر کرده است. صفحه را تازه کنید و دوباره تلاش کنید.",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

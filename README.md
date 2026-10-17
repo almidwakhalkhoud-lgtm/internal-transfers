@@ -55,18 +55,18 @@ Source exports are kept in ignored `data/sources/`. Source hashes, import counts
 2. Enter an exact item code or a registered barcode and press TAB or Enter. An unsuccessful lookup keeps focus on the code field.
 3. Enter a positive quantity with up to three decimal places. TAB moves to the valid unit selection when defined, or directly to the next row when no unit is defined.
 4. Review duplicate products explicitly. Either return to the existing quantity to update it, or keep a separate line.
-5. Save a draft to PostgreSQL if needed. Saved drafts can be reopened from New Transfer.
+5. Save a draft to PostgreSQL if needed. Saved drafts can be reopened from New Transfer, and their owner can delete a saved draft (from the saved-draft list or with **Delete draft** while it is open) instead of removing every item. The deletion is audited and the reserved number is not reused.
 6. Click **Confirm Transfer**. The review dialog shows the reserved number, route, line count and exact quantity total.
 7. Confirm. The server validates permissions, current catalog versions, quantities and units, then persists an immutable `CONFIRMED` document in a database transaction. A UUID idempotency key prevents duplicate confirmation records. Numbers are reserved atomically when drafts are saved; abandoned drafts can leave numbering gaps.
 8. The same screen immediately offers **Download PDF** and **Share via WhatsApp**, plus Preview/Print and Create another transfer. PDF generation failure leaves the confirmed transfer saved and provides a safe retry.
 
-Confirmation is separate from approval. Every confirmed transfer initially has approval `PENDING`. Administrators can approve/reject pending records and mark approved records received. Document fields remain immutable. Corrections require a new transfer with an explicit reference in its remarks; there is no silent editing of confirmed documents. No external stock balances or ERP records are modified.
+Confirmation is separate from approval. Every confirmed transfer initially has approval `PENDING`. Administrators can approve/reject pending records and mark approved records received. Document fields remain immutable. Corrections require a new transfer with an explicit reference in its remarks; there is no silent editing of confirmed documents. Administrators can delete a confirmed transfer from its detail page with an optional reason; the audit log keeps a full snapshot (number, route, dates, creator, approval, remarks, lines, total and PDF hash). Staff cannot delete confirmed transfers. No external stock balances or ERP records are modified.
 
 ## PDF and WhatsApp
 
 PDFs use a real Chromium print pipeline, not a screenshot. The template follows the supplied `MA-3210.pdf` structure: company header, transfer information, Item / Description / Quantity / Unit table, quantity total and employee/manager signature/date fields. Output is A4 with repeating table headings and page numbers. Original multilingual descriptions are preserved and Yekan Bakh is embedded. Registered printable barcodes are rendered as Code 128 with quiet zones.
 
-PDF bytes are stored with the saved document and are protected by the same server-side access checks as transfer details. Responses are private and non-cacheable. The employee name is captured at confirmation, so delayed PDF generation cannot pick up later user-name changes. Database triggers prevent later changes to confirmed document fields or saved PDF content; audit entries are append-only.
+PDF bytes are stored with the saved document and are protected by the same server-side access checks as transfer details. Responses are private and non-cacheable. The employee name is captured at confirmation, so delayed PDF generation cannot pick up later user-name changes. Database triggers prevent later changes to confirmed document fields or saved PDF content; audit entries are append-only. Deleting a confirmed transfer is only accepted inside the administrator delete transaction, which opts in with a transaction-local setting; direct SQL deletes remain rejected.
 
 Where supported, the WhatsApp button passes an actual `File` with PDF bytes to the native Web Share API. The user selects WhatsApp from the device's share sheet. If file sharing is unsupported or fails, BUZZ downloads the PDF, opens WhatsApp with a prepared message, and displays a clear manual-attachment instruction. An **Open WhatsApp** link remains available if the browser blocks the popup. It never claims that the fallback has attached a PDF and never creates a public document link. Native file sharing requires HTTPS outside localhost.
 
@@ -127,6 +127,29 @@ The browser suite covers initial administrator provisioning, staff creation/logi
 PDF QA artifacts and screenshots are saved under ignored `output/qa/`. `scripts/verify-pdfs.py` checks A4 pages, nonempty output, all 200 item codes in order, the exact total, signatures and decoding of the printed fixture barcode. It requires Python with `pymupdf`, `Pillow` and `zxing-cpp`.
 
 Native sharing is tested using an instrumented Web Share API. A physical Android device, WhatsApp recipient delivery, physical scanner hardware and an actual printer still require an operational device check. The browser download/manual-attachment fallback is tested end to end; automated tests do not send company documents to anyone.
+
+## Deploying to Vercel
+
+The application runs on Vercel with a hosted PostgreSQL database. The steps below keep existing accounts, access codes, transfers and PDFs.
+
+1. **Database.** Create a PostgreSQL database (for example Neon or Supabase) in a region close to the Vercel functions. Use a direct or session-mode connection string, not a transaction-mode pooler, because confirmation uses interactive transactions.
+2. **Vercel environment variables** (Project → Settings → Environment Variables, for Production and Preview):
+   - `DATABASE_URL`: the hosted connection string.
+   - `APP_ORIGIN`: the public address, for example `https://buzz.example.com` or `https://<project>.vercel.app`, without a trailing slash. Vercel's own deployment, branch and production domains are also accepted automatically.
+   - `ACCESS_CODE_PEPPER`: the exact contents of the local `.postgres/access-code-pepper`. Without the same value, existing access codes stop working. Keep it secret.
+   - `BUZZ_SETUP_TOKEN`: only for a fresh hosted install without an administrator; 64 hex characters. Open `/setup?token=<value>` once, then remove the variable.
+3. **Schema.** The `vercel-build` script (`scripts/vercel-build.mjs`) runs `prisma migrate deploy` before `next build`, so each deployment applies pending migrations to `DATABASE_URL`. If `DATABASE_URL` is not set, it skips migrations with a warning and the build still succeeds, but the site cannot sign anyone in until the variable is set and the project is redeployed. Preview deployments share that database unless you give Preview a separate `DATABASE_URL`.
+4. **Existing data.** After the first deployment has created the schema, copy the local data once from your computer (local database running):
+
+   ```powershell
+   $env:TARGET_DATABASE_URL="postgresql://..."; npm run db:copy
+   ```
+
+   The copy refuses a non-empty target. Sessions are not copied, so everyone signs in again. If a copy is interrupted, recreate the hosted database and run it again.
+5. **Logo.** `public/logo.jpeg` is no longer ignored by Git. Commit it so the hosted site shows the logo: `git add public/logo.jpeg`.
+6. **Deploy.** Merging to `main` deploys production when the repository is connected to Vercel.
+
+On Vercel, PDFs are generated with the serverless Chromium build from `@sparticuz/chromium`; locally the Playwright Chromium is still used. The API function allows up to 60 seconds for a cold browser start.
 
 ## Production deployment
 

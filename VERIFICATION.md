@@ -52,3 +52,11 @@ Text color values were darkened for contrast; the statistics-label check exceeds
 - Configure HTTPS hosting and a production PostgreSQL service when deploying. This delivery runs locally; no hosted deployment has been created.
 
 Setup, architecture, source hashes and operational instructions are in `README.md`. Browser reports, screenshots and PDF QA files are under ignored `playwright-report/` and `output/qa/`.
+
+## Draft deletion, administrator transfer deletion and sign-in update
+
+Saved drafts can be deleted by their owner from the saved-draft list or with **Delete draft** while open; another user (including an administrator) receives 404 and the deletion is audited as `DRAFT_DELETED`. Administrators can delete a confirmed transfer from its detail page with an optional reason. The guard trigger accepts the delete only inside that transaction (transaction-local `buzz.transfer_delete` setting); staff receive 403 and a direct database delete is still rejected. The audit entry `TRANSFER_DELETED` keeps the full document snapshot. Two new browser scenarios cover both flows and passed.
+
+The sign-in and first-time setup pages were redesigned around an animated open-X mark: orbiting rings, drifting X marks with pointer parallax, floating route/status chips, an aurora background and a rising glass form card. Motion is disabled under reduced-motion preference. Desktop English, desktop Persian/RTL and 390px mobile layouts were inspected with no horizontal overflow.
+
+In the cloud sandbox used for this update the full browser suite ran 26 scenarios: 23 passed. The remaining three fail identically on the previous commit because the sandbox lacks `ITEMS.xls` and the real catalog, and its calendar locale differs; they are environmental, not regressions.

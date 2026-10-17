@@ -9,6 +9,12 @@ let pepper: Promise<string> | undefined;
 async function getPepper() {
   if (!pepper)
     pepper = (async () => {
+      // Hosted deployments have no persistent disk: the key comes from the
+      // environment and must equal the local .postgres/access-code-pepper.
+      const configured = process.env.ACCESS_CODE_PEPPER?.trim();
+      if (configured) return configured;
+      if (process.env.VERCEL)
+        throw new Error("ACCESS_CODE_PEPPER is not configured");
       await mkdir(".postgres", { recursive: true });
       const path =
         process.env.BUZZ_TEST === "1"

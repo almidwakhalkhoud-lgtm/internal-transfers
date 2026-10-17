@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3100",
     "build": "prisma generate && next build",
+    "vercel-build": "node scripts/vercel-build.mjs",
+    "db:copy": "tsx --env-file=.env scripts/copy-database.ts",
     "start": "next start --hostname 127.0.0.1 --port 3100",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -20,6 +22,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@sparticuz/chromium": "153.0.0",
     "bcryptjs": "^3.0.3",
     "bwip-js": "^4.8.0",
     "lucide-react": "^0.577.0",

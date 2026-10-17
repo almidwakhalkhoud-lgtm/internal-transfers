@@ -3,7 +3,15 @@ import { Form } from "@/components/form";
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowLeftRight, ShieldCheck, Globe } from "lucide-react";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Globe,
+  CheckCircle2,
+  FileText,
+  MapPin,
+} from "lucide-react";
+import { LoginBackdrop, XMark, XStage } from "@/components/login-art";
 import { api } from "@/lib/client";
 import { translate, type Locale } from "@/lib/i18n";
 export default function Login() {
@@ -19,23 +27,33 @@ export default function Login() {
       dir={locale === "fa" ? "rtl" : "ltr"}
       lang={locale}
     >
+      <LoginBackdrop />
       <section className="login-story">
-        <Image src="/logo.jpeg" width={145} height={92} alt="BUZZ" priority />
-        <div>
-          <div className="eyebrow">MEHDI ALI TRADING Co.</div>
+        <div className="login-brand">
+          <Image src="/logo.jpeg" width={145} height={92} alt="BUZZ" priority />
+          <span className="eyebrow" dir="ltr">
+            MEHDI ALI TRADING Co.
+          </span>
+        </div>
+        <XStage
+          chips={[
+            <>
+              <MapPin size={14} />
+              {t("From location")} <ArrowRight size={12} /> {t("To location")}
+            </>,
+            <>
+              <CheckCircle2 size={14} />
+              {t("Confirmed")}
+            </>,
+            <>
+              <FileText size={14} />
+              PDF
+            </>,
+          ]}
+        />
+        <div className="login-copy">
           <h1>{t("Work moves better together.")}</h1>
           <p>{t("Secure access to your inventory transfers.")}</p>
-          <div className="login-route">
-            <span>
-              <PackageIcon />
-              {t("From location")}
-            </span>
-            <ArrowRight size={20} />
-            <span>
-              <PackageIcon />
-              {t("To location")}
-            </span>
-          </div>
         </div>
         <small>BUZZ / {t("Internal transfers")}</small>
       </section>
@@ -71,7 +89,7 @@ export default function Login() {
           }}
         >
           <span className="login-icon">
-            <ArrowLeftRight />
+            <XMark className="x-open" />
           </span>
           <h2>{t("Sign in to BUZZ")}</h2>
           <p>{t("Use your company account to continue.")}</p>
@@ -141,7 +159,4 @@ export default function Login() {
       </section>
     </div>
   );
-}
-function PackageIcon() {
-  return <span className="route-cube">◇</span>;
 }

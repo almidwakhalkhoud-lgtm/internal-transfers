@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import type { Browser } from "playwright";
 import bwipjs from "bwip-js/node";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -62,11 +62,24 @@ export async function documentHtml(t: DocumentData) {
   );
   return `<!doctype html><html><head><meta charset="utf-8"><style>@font-face{font-family:Yekan;src:url(data:font/woff2;base64,${font.toString("base64")})} @page{size:A4;margin:15mm 12mm 20mm}*{box-sizing:border-box}body{font:11px Arial,Yekan,"Segoe UI",sans-serif;color:#181818}h1{font-size:20px;margin:0 0 5px}.title{text-align:center;margin-bottom:23px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #555;padding:6px;vertical-align:middle;overflow-wrap:anywhere}th{background:#fff;text-align:center}td{border-top:0;border-bottom:0;text-align:center}tbody{border-bottom:1px solid #555}thead{display:table-header-group}tr{break-inside:avoid}img{display:block;max-width:100%;width:auto;height:45px;margin-top:6px}.code{direction:ltr;font-size:10px}.num{text-align:right;direction:ltr}.total{font-weight:bold;text-align:right;padding:14px 0}.signatures{break-inside:avoid;display:grid;grid-template-columns:1fr 1fr;gap:35px;margin-top:32px}.signature{line-height:3}footer{margin-top:22px;color:#666;font-size:9px}</style></head><body><div class="title"><h1>MEHDI ALI TRADING Co.</h1><div>INTERNAL INVENTORY TRANSFER</div></div><div class="meta"><div>Transfer No: <b>${esc(t.number)}</b></div><div>Date: ${esc(String(t.date).slice(0, 10))}</div><div>From: <b dir="auto">${esc(t.source)}</b></div><div>To: <b dir="auto">${esc(t.destination)}</b></div><div>Status: Confirmed</div><div>Employee: ${esc(t.employee)}</div></div><table><colgroup><col style="width:25%"><col style="width:52%"><col style="width:14%"><col style="width:9%"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}</tbody></table><div class="total">Total transferred quantity: ${esc(t.total)}</div>${t.remarks ? `<p dir="auto">Remarks: ${esc(t.remarks)}</p>` : ""}<div class="signatures"><div class="signature">Employee signature: _________________<br>Date: __________________________</div><div class="signature">Manager signature: __________________<br>Date: __________________________</div></div><footer>BUZZ · ${esc(t.number)} · Saved transfer snapshot</footer></body></html>`;
 }
+// Serverless hosts have no Playwright browser download; they use the
+// compressed Chromium build from @sparticuz/chromium instead.
+// Playwright is loaded on demand so the rest of the API never depends on it.
+async function launchBrowser() {
+  const { chromium } = await import("playwright");
+  if (!process.env.VERCEL) return chromium.launch({ headless: true });
+  const { default: serverless } = await import("@sparticuz/chromium");
+  return chromium.launch({
+    headless: true,
+    executablePath: await serverless.executablePath(),
+    args: serverless.args,
+  });
+}
 export async function generatePdf(t: DocumentData) {
   const release = await acquirePdfSlot();
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let browser: Browser | undefined;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setContent(await documentHtml(t), { waitUntil: "load" });
     return await page.pdf({

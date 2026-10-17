@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { translate, type Locale } from "@/lib/i18n";
+import { LoginBackdrop, XStage } from "@/components/login-art";
 export default function Setup() {
   const router = useRouter();
   const [locale, setLocale] = useState<Locale>("en");
@@ -16,10 +17,16 @@ export default function Setup() {
       dir={locale === "fa" ? "rtl" : "ltr"}
       lang={locale}
     >
+      <LoginBackdrop />
       <section className="login-story">
-        <Image src="/logo.jpeg" width={145} height={92} alt="BUZZ" />
-        <div>
-          <div className="eyebrow">MEHDI ALI TRADING Co.</div>
+        <div className="login-brand">
+          <Image src="/logo.jpeg" width={145} height={92} alt="BUZZ" />
+          <span className="eyebrow" dir="ltr">
+            MEHDI ALI TRADING Co.
+          </span>
+        </div>
+        <XStage chips={[]} />
+        <div className="login-copy">
           <h1>{t("Your workspace. Ready to move.")}</h1>
           <p>
             {t(
