@@ -138,7 +138,7 @@ The application runs on Vercel with a hosted PostgreSQL database. The steps belo
    - `APP_ORIGIN`: the public address, for example `https://buzz.example.com` or `https://<project>.vercel.app`, without a trailing slash. Vercel's own deployment, branch and production domains are also accepted automatically.
    - `ACCESS_CODE_PEPPER`: the exact contents of the local `.postgres/access-code-pepper`. Without the same value, existing access codes stop working. Keep it secret.
    - `BUZZ_SETUP_TOKEN`: only for a fresh hosted install without an administrator; 64 hex characters. Open `/setup?token=<value>` once, then remove the variable.
-3. **Schema.** The `vercel-build` script runs `prisma migrate deploy` before `next build`, so each deployment applies pending migrations to `DATABASE_URL`. Preview deployments share that database unless you give Preview a separate `DATABASE_URL`.
+3. **Schema.** The `vercel-build` script (`scripts/vercel-build.mjs`) runs `prisma migrate deploy` before `next build`, so each deployment applies pending migrations to `DATABASE_URL`. If `DATABASE_URL` is not set, it skips migrations with a warning and the build still succeeds, but the site cannot sign anyone in until the variable is set and the project is redeployed. Preview deployments share that database unless you give Preview a separate `DATABASE_URL`.
 4. **Existing data.** After the first deployment has created the schema, copy the local data once from your computer (local database running):
 
    ```powershell
