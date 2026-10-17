@@ -29,10 +29,22 @@ export async function requireUser(admin = false) {
     throw new HttpError(403, "Administrator access required");
   return user;
 }
+// APP_ORIGIN is the canonical origin; on Vercel the deployment, branch and
+// production domains it assigns are accepted as well.
+export function allowedOrigins() {
+  const origins = [process.env.APP_ORIGIN ?? "http://127.0.0.1:3100"];
+  for (const host of [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ])
+    if (host) origins.push(`https://${host}`);
+  return origins;
+}
 export async function sameOrigin() {
   const h = await headers();
   const origin = h.get("origin");
-  if (!origin || origin !== (process.env.APP_ORIGIN ?? "http://127.0.0.1:3100"))
+  if (!origin || !allowedOrigins().includes(origin))
     throw new HttpError(403, "Invalid request origin");
 }
 export async function createSession(
@@ -62,7 +74,8 @@ export async function createSession(
   (await cookies()).set("buzz-session", token, {
     httpOnly: true,
     sameSite: "strict",
-    secure: process.env.APP_ORIGIN?.startsWith("https:"),
+    secure:
+      !!process.env.VERCEL || process.env.APP_ORIGIN?.startsWith("https:"),
     path: "/",
     maxAge: 8 * 3600,
   });

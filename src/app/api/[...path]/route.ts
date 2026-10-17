@@ -33,6 +33,8 @@ import {
 import { randomBytes, timingSafeEqual } from "node:crypto";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// PDF generation starts a browser; allow for a cold start on serverless hosts.
+export const maxDuration = 60;
 const userSelect = {
   id: true,
   name: true,
@@ -143,20 +145,21 @@ async function handle(
           password: z.string().min(12).max(128),
         })
         .parse(await req.json());
-      let secret = "";
-      try {
-        secret = await readFile(
-          process.env.BUZZ_TEST === "1"
-            ? ".postgres/test-setup-token"
-            : ".postgres/setup-token",
-          "utf8",
-        );
-      } catch {
-        throw new HttpError(
-          403,
-          "Provisioning is not enabled. Run npm run setup locally.",
-        );
-      }
+      let secret = process.env.BUZZ_SETUP_TOKEN?.trim() ?? "";
+      if (!secret)
+        try {
+          secret = await readFile(
+            process.env.BUZZ_TEST === "1"
+              ? ".postgres/test-setup-token"
+              : ".postgres/setup-token",
+            "utf8",
+          );
+        } catch {
+          throw new HttpError(
+            403,
+            "Provisioning is not enabled. Run npm run setup locally.",
+          );
+        }
       if (
         secret.length !== input.token.length ||
         !timingSafeEqual(Buffer.from(secret), Buffer.from(input.token))

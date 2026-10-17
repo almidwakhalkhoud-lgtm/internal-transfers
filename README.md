@@ -128,6 +128,29 @@ PDF QA artifacts and screenshots are saved under ignored `output/qa/`. `scripts/
 
 Native sharing is tested using an instrumented Web Share API. A physical Android device, WhatsApp recipient delivery, physical scanner hardware and an actual printer still require an operational device check. The browser download/manual-attachment fallback is tested end to end; automated tests do not send company documents to anyone.
 
+## Deploying to Vercel
+
+The application runs on Vercel with a hosted PostgreSQL database. The steps below keep existing accounts, access codes, transfers and PDFs.
+
+1. **Database.** Create a PostgreSQL database (for example Neon or Supabase) in a region close to the Vercel functions. Use a direct or session-mode connection string, not a transaction-mode pooler, because confirmation uses interactive transactions.
+2. **Vercel environment variables** (Project → Settings → Environment Variables, for Production and Preview):
+   - `DATABASE_URL`: the hosted connection string.
+   - `APP_ORIGIN`: the public address, for example `https://buzz.example.com` or `https://<project>.vercel.app`, without a trailing slash. Vercel's own deployment, branch and production domains are also accepted automatically.
+   - `ACCESS_CODE_PEPPER`: the exact contents of the local `.postgres/access-code-pepper`. Without the same value, existing access codes stop working. Keep it secret.
+   - `BUZZ_SETUP_TOKEN`: only for a fresh hosted install without an administrator; 64 hex characters. Open `/setup?token=<value>` once, then remove the variable.
+3. **Schema.** The `vercel-build` script runs `prisma migrate deploy` before `next build`, so each deployment applies pending migrations to `DATABASE_URL`. Preview deployments share that database unless you give Preview a separate `DATABASE_URL`.
+4. **Existing data.** After the first deployment has created the schema, copy the local data once from your computer (local database running):
+
+   ```powershell
+   $env:TARGET_DATABASE_URL="postgresql://..."; npm run db:copy
+   ```
+
+   The copy refuses a non-empty target. Sessions are not copied, so everyone signs in again. If a copy is interrupted, recreate the hosted database and run it again.
+5. **Logo.** `public/logo.jpeg` is no longer ignored by Git. Commit it so the hosted site shows the logo: `git add public/logo.jpeg`.
+6. **Deploy.** Merging to `main` deploys production when the repository is connected to Vercel.
+
+On Vercel, PDFs are generated with the serverless Chromium build from `@sparticuz/chromium`; locally the Playwright Chromium is still used. The API function allows up to 60 seconds for a cold browser start.
+
 ## Production deployment
 
 This project has been implemented and tested locally. No hosted deployment has been created. Before staff rollout, finish the administrator's source review, register verified physical barcodes where required, and complete a device check.
