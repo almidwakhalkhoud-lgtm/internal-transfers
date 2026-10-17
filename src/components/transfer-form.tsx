@@ -99,6 +99,10 @@ export function TransferForm({
   const [drafts, setDrafts] = useState<
     { id: string; number: string; data: DraftData }[]
   >([]);
+  const [deleting, setDeleting] = useState<{
+    id: string;
+    number: string;
+  } | null>(null);
   const latest = useRef(lines);
   const pendingFocus = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -132,16 +136,21 @@ export function TransferForm({
       if (document.activeElement === control) pendingFocus.current = null;
     }
   };
+  const loadDrafts = useCallback(
+    () =>
+      api<{ id: string; number: string; data: DraftData }[]>("drafts")
+        .then(setDrafts)
+        .catch((e) => setError(e.message)),
+    [],
+  );
   useEffect(() => {
     api<{ id: string; name: string }[]>("locations")
       .then((rows) =>
         setLocations(rows.filter((l) => !("active" in l) || l.active)),
       )
       .catch((e) => setError(e.message));
-    api<typeof drafts>("drafts")
-      .then(setDrafts)
-      .catch((e) => setError(e.message));
-  }, []); // initial server state
+    loadDrafts();
+  }, [loadDrafts]); // initial server state
   const update = useCallback(
     (id: string, patch: Partial<Line>) =>
       setLines((rows) =>
@@ -233,6 +242,7 @@ export function TransferForm({
     const result = await api<{ number: string }>("drafts", { id: key, data });
     setNumber(result.number);
     setNotice("Draft saved");
+    loadDrafts();
     return result.number;
   }
   const reviewForm = useForm<DraftData>({
@@ -310,6 +320,22 @@ export function TransferForm({
       setReview(false);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteDraft(id: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`drafts/${id}`, undefined, "DELETE");
+      setDrafts((rows) => rows.filter((d) => d.id !== id));
+      if (id === key) reset();
+      setNotice("Draft deleted");
+      setDeleting(null);
+    } catch (e) {
+      setError((e as Error).message);
+      setDeleting(null);
     } finally {
       setBusy(false);
     }
@@ -532,6 +558,16 @@ export function TransferForm({
           {t("Drafts are saved to the server.")}
         </span>
         <div>
+          {drafts.some((d) => d.id === key) && (
+            <button
+              className="button danger"
+              disabled={busy}
+              onClick={() => setDeleting({ id: key, number })}
+            >
+              <Trash2 size={16} />
+              {t("Delete draft")}
+            </button>
+          )}
           <button
             className="button"
             disabled={busy}
@@ -565,23 +601,64 @@ export function TransferForm({
             {t("Saved drafts")} ({drafts.length})
           </summary>
           {drafts.map((d) => (
-            <button
-              key={d.id}
-              className="button"
-              onClick={() => {
-                setKey(d.id);
-                setNumber(d.number);
-                setSource(d.data.sourceId);
-                setDestination(d.data.destinationId);
-                setDate(d.data.date);
-                setRemarks(d.data.remarks);
-                setLines(d.data.lines);
-              }}
-            >
-              {t("Open draft")} · {d.number}
-            </button>
+            <span key={d.id} className="draft-item">
+              <button
+                className="button"
+                onClick={() => {
+                  setKey(d.id);
+                  setNumber(d.number);
+                  setSource(d.data.sourceId);
+                  setDestination(d.data.destinationId);
+                  setDate(d.data.date);
+                  setRemarks(d.data.remarks);
+                  setLines(d.data.lines);
+                  setNotice("");
+                }}
+              >
+                {t("Open draft")} · {d.number}
+              </button>
+              <button
+                className="icon-button danger"
+                aria-label={`${t("Delete draft")} · ${d.number}`}
+                disabled={busy}
+                onClick={() => setDeleting({ id: d.id, number: d.number })}
+              >
+                <Trash2 size={15} />
+              </button>
+            </span>
           ))}
         </details>
+      )}
+      {deleting && (
+        <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
+          <p className="muted">
+            {t(
+              "This saved draft and all of its items will be removed. Its number will not be reused.",
+            )}
+          </p>
+          <dl className="review-grid">
+            <dt>{t("Transfer number")}</dt>
+            <dd dir="ltr">{deleting.number}</dd>
+          </dl>
+          <div className="modal-actions">
+            <button
+              className="button"
+              data-initial-focus
+              disabled={busy}
+              onClick={() => setDeleting(null)}
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              className="button danger-solid"
+              disabled={busy}
+              onClick={() => deleteDraft(deleting.id)}
+            >
+              <Trash2 size={16} />
+              {t(busy ? "Please wait…" : "Delete draft")}
+            </button>
+          </div>
+        </Modal>
       )}
       {review && (
         <Modal

@@ -68,6 +68,20 @@ result = spawnSync(
 if (result.status) process.exit(result.status);
 result = spawnSync(
   process.execPath,
+  [
+    "node_modules/prisma/build/index.js",
+    "db",
+    "execute",
+    "--file",
+    "prisma/migrations/202610170006_admin_transfer_delete/migration.sql",
+    "--schema",
+    "prisma/schema.prisma",
+  ],
+  { env, stdio: "inherit" },
+);
+if (result.status) process.exit(result.status);
+result = spawnSync(
+  process.execPath,
   ["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(2)],
   { env, stdio: "inherit" },
 );

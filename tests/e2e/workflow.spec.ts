@@ -1226,3 +1226,104 @@ test("administrator chosen codes are reusable, case insensitive, unique, hashed 
   expect(JSON.stringify(audit)).not.toContain("Staff-QA2026");
   await context.close();
 });
+test("saved drafts can be deleted by their owner only", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
+  const input = await draft(page.request, [
+    {
+      productId: p.id,
+      version: p.updatedAt.toISOString(),
+      quantity: "3",
+      unit: p.units[0],
+    },
+  ]);
+  const { number } = await db.draft.findUniqueOrThrow({
+    where: { id: input.key },
+  });
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  expect(
+    (
+      await admin.request.delete(`/api/drafts/${input.key}`, {
+        headers: { Origin: origin },
+      })
+    ).status(),
+  ).toBe(404);
+  await adminContext.close();
+  await page.goto("/new-transfer");
+  await page.locator(".draft-list > summary").click();
+  await page
+    .getByRole("button", { name: `Delete draft · ${number}`, exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete draft", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Draft deleted");
+  await expect(
+    page.getByRole("button", { name: `Open draft · ${number}`, exact: true }),
+  ).toHaveCount(0);
+  expect(await db.draft.findUnique({ where: { id: input.key } })).toBeNull();
+  expect(
+    await db.audit.count({
+      where: { action: "DRAFT_DELETED", target: input.key },
+    }),
+  ).toBe(1);
+});
+test("administrators delete confirmed transfers with an audit snapshot", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const input = await draft(page.request, [
+    {
+      productId: p.id,
+      version: p.updatedAt.toISOString(),
+      quantity: "4",
+      unit: "",
+    },
+  ]);
+  const saved = await (await post(page.request, "transfers", input)).json();
+  expect(
+    (
+      await page.request.delete(`/api/transfers/${saved.id}`, {
+        headers: { Origin: origin },
+      })
+    ).status(),
+  ).toBe(403);
+  await expect(
+    db.transfer.delete({ where: { id: saved.id } }),
+  ).rejects.toThrow();
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  await admin.goto(`/transfers/${saved.id}`);
+  await admin
+    .getByRole("button", { name: "Delete transfer", exact: true })
+    .click();
+  const modal = admin.getByRole("dialog");
+  await modal
+    .getByLabel("Reason (optional)", { exact: true })
+    .fill("Entered twice");
+  await modal
+    .getByRole("button", { name: "Delete transfer", exact: true })
+    .click();
+  await expect(admin).toHaveURL(/\/transfers$/);
+  expect(await db.transfer.findUnique({ where: { id: saved.id } })).toBeNull();
+  const entry = await db.audit.findFirstOrThrow({
+    where: { action: "TRANSFER_DELETED", target: saved.id },
+  });
+  expect(entry.detail).toMatchObject({
+    number: saved.number,
+    total: "4",
+    reason: "Entered twice",
+  });
+  await adminContext.close();
+});

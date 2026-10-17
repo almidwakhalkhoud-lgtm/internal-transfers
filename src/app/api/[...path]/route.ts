@@ -225,7 +225,9 @@ async function handle(
     const requiredMenu =
       path === "dashboard"
         ? "dashboard"
-        : path === "drafts" || (path === "transfers" && method === "POST")
+        : path === "drafts" ||
+            path.startsWith("drafts/") ||
+            (path === "transfers" && method === "POST")
           ? "new-transfer"
           : path.endsWith("/pdf") && hasMenu(user, "new-transfer")
             ? null
@@ -355,6 +357,26 @@ async function handle(
         return NextResponse.json(draft);
       }
     }
+    const draftMatch = path.match(/^drafts\/([^/]+)$/);
+    if (draftMatch && method === "DELETE") {
+      await db.$transaction(async (tx) => {
+        const draft = await tx.draft.findUnique({
+          where: { id: draftMatch[1] },
+        });
+        if (!draft || draft.userId !== user.id)
+          throw new HttpError(404, "Draft not found");
+        await tx.draft.delete({ where: { id: draft.id } });
+        await tx.audit.create({
+          data: {
+            actor: user.id,
+            action: "DRAFT_DELETED",
+            target: draft.id,
+            detail: { number: draft.number },
+          },
+        });
+      });
+      return NextResponse.json({ ok: true });
+    }
     if (path === "transfers" && method === "POST") {
       const t = await confirmTransfer(user, await req.json());
       try {
@@ -451,6 +473,43 @@ async function handle(
               action: approval,
               target: t.id,
               detail: { from: t.approval },
+            },
+          });
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (method === "DELETE") {
+        await requireUser(true);
+        const { reason } = z
+          .object({ reason: z.string().trim().max(500).optional() })
+          .parse(await req.json().catch(() => ({})));
+        await db.$transaction(async (tx) => {
+          // The document guard trigger only permits deletion inside a
+          // transaction that opted in; direct deletes stay rejected.
+          await tx.$queryRaw`SELECT set_config('buzz.transfer_delete', 'allowed', true)`;
+          const result = await tx.transfer.deleteMany({ where: { id: t.id } });
+          if (result.count !== 1)
+            throw new HttpError(409, "Transfer changed. Refresh and retry.");
+          await tx.audit.create({
+            data: {
+              actor: user.id,
+              action: "TRANSFER_DELETED",
+              target: t.id,
+              detail: {
+                number: t.number,
+                source: t.source,
+                destination: t.destination,
+                date: t.date.toISOString(),
+                confirmedAt: t.confirmedAt.toISOString(),
+                creatorId: t.creatorId,
+                creatorName: t.creatorName,
+                approval: t.approval,
+                remarks: t.remarks,
+                total: t.total.toString(),
+                lines: t.lines as Prisma.InputJsonValue,
+                pdfHash: t.pdfHash,
+                reason: reason ?? "",
+              },
             },
           });
         });
@@ -931,4 +990,4 @@ async function handle(
     );
   }
 }
-export { handle as GET, handle as POST, handle as PATCH };
+export { handle as GET, handle as POST, handle as PATCH, handle as DELETE };
