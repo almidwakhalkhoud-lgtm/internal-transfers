@@ -71,9 +71,12 @@ export async function createSession(
       },
     });
   });
+  // Lax, not strict: a page opened from a link in another app (WhatsApp, a
+  // bookmark) keeps that origin on every reload, and a strict cookie would be
+  // withheld each time. Writes are guarded by sameOrigin() instead.
   (await cookies()).set("buzz-session", token, {
     httpOnly: true,
-    sameSite: "strict",
+    sameSite: "lax",
     secure:
       !!process.env.VERCEL || process.env.APP_ORIGIN?.startsWith("https:"),
     path: "/",
