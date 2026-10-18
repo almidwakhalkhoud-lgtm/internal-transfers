@@ -579,16 +579,6 @@ export function TransferForm({
         </div>
       </section>
       <section className="remarks-section">
-        <label>
-          {t("Remarks")}
-          <textarea
-            aria-label={t("Remarks")}
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            placeholder={t("Optional notes for this transfer")}
-            maxLength={2000}
-          />
-        </label>
         <div className="document-note">
           <FileCheck2 size={20} />
           <p>
