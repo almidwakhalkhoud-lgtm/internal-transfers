@@ -359,20 +359,20 @@ async function handle(
         const source = route.find((l) => l.id === data.sourceId);
         const destination = route.find((l) => l.id === data.destinationId);
         const draft = await db.$transaction(async (tx) => {
-          const seq = existing
-            ? await tx.sequence.findUnique({ where: { id: "transfer" } })
-            : await tx.sequence.upsert({
-                where: { id: "transfer" },
-                create: { id: "transfer", value: 1 },
-                update: { value: { increment: 1 } },
-              });
-          const prefix =
+          const value = existing
+            ? sequenceOf(existing.number)
+            : (
+                await tx.sequence.upsert({
+                  where: { id: "transfer" },
+                  create: { id: "transfer", value: 1 },
+                  update: { value: { increment: 1 } },
+                })
+              ).value;
+          const number = numberFor(
+            value,
             source && destination
               ? routeCode(source.name, destination.name)
-              : (seq?.prefix ?? "TRF");
-          const number = numberFor(
-            existing ? sequenceOf(existing.number) : seq!.value,
-            prefix,
+              : "",
           );
           if (existing)
             return tx.draft.update({
@@ -796,33 +796,33 @@ async function handle(
         return NextResponse.json(
           (await db.sequence.findUnique({ where: { id: "transfer" } })) ?? {
             value: 0,
-            prefix: "TRF",
           },
         );
       if (method === "PATCH") {
         const v = z
           .object({
-            prefix: z.string().regex(/^[A-Z]{1,8}$/),
-            nextValue: z.number().int().positive().max(2147483647).optional(),
+            nextValue: z.number().int().positive().max(2147483647),
           })
           .parse(await req.json());
         await db.$transaction(async (tx) => {
-          const seq = await tx.sequence.upsert({
+          await tx.sequence.upsert({
             where: { id: "transfer" },
             create: { id: "transfer", value: 0 },
             update: { value: { increment: 0 } },
           });
-          if (v.nextValue !== undefined && v.nextValue <= seq.value)
+          // The counter may go back only past numbers nothing holds.
+          const held = [
+            ...(await tx.transfer.findMany({ select: { number: true } })),
+            ...(await tx.draft.findMany({ select: { number: true } })),
+          ].map((r) => sequenceOf(r.number));
+          if (held.some((n) => n >= v.nextValue))
             throw new HttpError(
               400,
-              "The next number must be greater than the last reserved number",
+              "The next number must be greater than every number already used",
             );
           await tx.sequence.update({
             where: { id: "transfer" },
-            data: {
-              prefix: v.prefix,
-              ...(v.nextValue === undefined ? {} : { value: v.nextValue - 1 }),
-            },
+            data: { value: v.nextValue - 1 },
           });
         });
         await audit(user.id, "SETTINGS_UPDATED", "transfer", v);

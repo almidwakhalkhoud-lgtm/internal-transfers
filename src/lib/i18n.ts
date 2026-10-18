@@ -97,6 +97,10 @@ export const fa: Record<string, string> = {
   "Description appears automatically": "شرح به صورت خودکار نمایش داده می‌شود",
   "No defined unit": "واحد تعریف نشده",
   "No unit": "بدون واحد",
+  "Numbers are the first letters of the source and destination and one shared counter, e.g. MA-0001.":
+    "شماره از حرف اول مبدا و مقصد و یک شمارنده مشترک ساخته می‌شود، مثل MA-0001.",
+  "The next number must be greater than every number already used":
+    "شماره بعدی باید از همه شماره‌های استفاده‌شده بزرگ‌تر باشد",
   "Item note": "یادداشت قلم",
   "Note for this item": "یادداشت برای این قلم",
   "Add a note": "افزودن یادداشت",

@@ -29,7 +29,15 @@ import {
 } from "lucide-react";
 import { useBuzz, PageTitle, Status } from "./shell";
 import { api, downloadBlob } from "@/lib/client";
-import { quantity, totalQuantity, formatTotal, renamable } from "@/lib/domain";
+import {
+  quantity,
+  totalQuantity,
+  formatTotal,
+  renamable,
+  numberFor,
+  routeCode,
+  sequenceOf,
+} from "@/lib/domain";
 export type Product = {
   updatedAt: string;
   id: string;
@@ -74,6 +82,7 @@ export function TransferForm({
     { id: string; name: string; mine: boolean }[]
   >([]);
   const own = locations.filter((l) => l.mine);
+  const name = (id: string) => locations.find((l) => l.id === id)?.name;
   const [sourceId, setSource] = useState("");
   const [destinationId, setDestination] = useState("");
   const [date, setDate] = useState(() =>
@@ -130,6 +139,15 @@ export function TransferForm({
     };
   }, []);
   const data = { sourceId, destinationId, date, remarks, lines };
+  // The reserved counter is fixed; its letters follow the chosen route.
+  const liveNumber =
+    number &&
+    numberFor(
+      sequenceOf(number),
+      name(sourceId) && name(destinationId)
+        ? routeCode(name(sourceId)!, name(destinationId)!)
+        : "",
+    );
   const focus = (id: string, field: string) => {
     pendingFocus.current = `${field}-${id}`;
     const control = document.getElementById(pendingFocus.current) as
@@ -482,7 +500,7 @@ export function TransferForm({
           <label>
             {t("Transfer number")}
             <input
-              value={number || t("Assigned on save")}
+              value={liveNumber || t("Assigned on save")}
               readOnly
               dir="ltr"
               className="readonly"
@@ -696,7 +714,7 @@ export function TransferForm({
           <p className="muted">{t("Review the document before confirming.")}</p>
           <dl className="review-grid">
             <dt>{t("Transfer number")}</dt>
-            <dd dir="ltr">{number}</dd>
+            <dd dir="ltr">{liveNumber}</dd>
             <dt>{t("From location")}</dt>
             <dd>{locations.find((l) => l.id === sourceId)?.name}</dd>
             <dt>{t("To location")}</dt>

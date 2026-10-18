@@ -483,9 +483,7 @@ export function UsersPage() {
 }
 export function SettingsPage() {
   const { t } = useBuzz();
-  const { data, error, load } = useLoad<{ prefix: string; value: number }>(
-    "settings",
-  );
+  const { data, error, load } = useLoad<{ value: number }>("settings");
   const [message, setMessage] = useState("");
   const [err, setErr] = useState("");
   return (
@@ -505,7 +503,6 @@ export function SettingsPage() {
                 await api(
                   "settings",
                   {
-                    prefix: new FormData(e.currentTarget).get("prefix"),
                     nextValue: Number(
                       new FormData(e.currentTarget).get("nextValue"),
                     ),
@@ -519,17 +516,11 @@ export function SettingsPage() {
               }
             }}
           >
-            <label>
-              {t("Transfer prefix")}
-              <input
-                name="prefix"
-                defaultValue={data.prefix}
-                pattern="[A-Z]{1,8}"
-                maxLength={8}
-                required
-                dir="ltr"
-              />
-            </label>
+            <p className="muted">
+              {t(
+                "Numbers are the first letters of the source and destination and one shared counter, e.g. MA-0001.",
+              )}
+            </p>
             <p>
               {t("Last reserved number")}: <strong>{data.value}</strong>
             </p>
@@ -538,7 +529,7 @@ export function SettingsPage() {
               <input
                 type="number"
                 name="nextValue"
-                min={data.value + 1}
+                min={1}
                 max={2147483647}
                 defaultValue={data.value + 1}
                 required

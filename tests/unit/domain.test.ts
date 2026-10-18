@@ -84,8 +84,8 @@ describe("quantities", () => {
 });
 describe("workflow and authorization", () => {
   it("formats sequence values", () => {
-    expect(numberFor(3210)).toBe("TRF-3210");
-    expect(numberFor(100000)).toBe("TRF-100000");
+    expect(numberFor(3210)).toBe("3210");
+    expect(numberFor(100000)).toBe("100000");
     expect(numberFor(1, routeCode("Main", "Al Azaiba"))).toBe("MA-0001");
     expect(sequenceOf("MS-0042")).toBe(42);
     expect(sequenceOf("TRF00002")).toBe(2);
