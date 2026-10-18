@@ -297,8 +297,18 @@ async function handle(
       const exact = req.nextUrl.searchParams.has("exact");
       const where: Prisma.ProductWhereInput = {
         active: true,
+        // Codes are typed in capitals, so exact lookups ignore letter case.
         ...(exact
-          ? { OR: [{ code: q }, { barcodes: { some: { value: q } } }] }
+          ? {
+              OR: [
+                { code: { equals: q, mode: "insensitive" } },
+                {
+                  barcodes: {
+                    some: { value: { equals: q, mode: "insensitive" } },
+                  },
+                },
+              ],
+            }
           : q
             ? {
                 OR: [
@@ -311,6 +321,21 @@ async function handle(
       };
       const take = 50,
         page = Math.max(0, Number(req.nextUrl.searchParams.get("page")) || 0);
+      if (exact) {
+        const items = await db.product.findMany({
+          where,
+          include: { barcodes: true },
+          take,
+          orderBy: { code: "asc" },
+        });
+        // When only letter case tells two products apart, the one written
+        // exactly as typed wins.
+        const same = items.filter(
+          (p) => p.code === q || p.barcodes.some((b) => b.value === q),
+        );
+        const result = items.length > 1 && same.length === 1 ? same : items;
+        return NextResponse.json({ items: result, count: result.length });
+      }
       return NextResponse.json({
         items: await db.product.findMany({
           where,

@@ -863,15 +863,20 @@ const EntryRow = memo(function EntryRow({
             enterKeyHint="next"
             value={line.code}
             placeholder={t("Scan or enter code")}
-            onChange={(e) =>
+            onChange={(e) => {
+              // Codes are always entered in capitals; keep the caret in place.
+              const input = e.target;
+              const caret = input.selectionStart;
+              input.value = input.value.toUpperCase();
+              input.setSelectionRange(caret, caret);
               update(line.id, {
-                code: e.target.value,
+                code: input.value,
                 product: undefined,
                 error: undefined,
                 unit: "",
                 duplicateAccepted: false,
-              })
-            }
+              });
+            }}
             onKeyDown={(e) => {
               if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
                 e.preventDefault();
