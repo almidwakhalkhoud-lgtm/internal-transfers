@@ -928,7 +928,7 @@ const EntryRow = memo(function EntryRow({
           </span>
         )}
       </td>
-      <td className="row-actions">
+      <td className="line-actions">
         <button
           className={noteOpen ? "icon-button active" : "icon-button"}
           tabIndex={-1}

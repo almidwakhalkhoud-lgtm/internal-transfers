@@ -4,7 +4,7 @@ import { Form } from "@/components/form";
 import Link from "next/link";
 import { menus } from "@/lib/permissions";
 import { Skeleton } from "./skeleton";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
@@ -489,14 +489,20 @@ function vapidKey(base64: string) {
   );
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
+const noSubscribe = () => () => {};
 // Turns transfer notifications on or off for the browser it is opened in.
 function Notifications() {
   const { t } = useBuzz();
-  const supported =
-    typeof window !== "undefined" &&
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window;
+  // Known only in the browser; null until then so the server and the first
+  // client render agree.
+  const supported = useSyncExternalStore(
+    noSubscribe,
+    () =>
+      "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window,
+    () => null,
+  );
   const [subscription, setSubscription] = useState<PushSubscription | null>(
     null,
   );
@@ -542,7 +548,7 @@ function Notifications() {
             "Get a notification on this device whenever anyone confirms a transfer.",
           )}
         </p>
-        {!supported ? (
+        {supported === null ? null : !supported ? (
           <p className="error">
             {t(
               "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
@@ -724,6 +730,42 @@ const auditActions = [
   "LOCATION_UPDATED",
   "SETTINGS_UPDATED",
 ];
+// English names for the stored action codes; Persian ones live in i18n.
+const actionNames: Record<string, string> = {
+  LOGIN: "Signed in",
+  LOGIN_FAILED: "Sign-in failed",
+  LOGIN_BLOCKED: "Sign-in blocked",
+  LOGOUT: "Signed out",
+  NOTIFICATIONS_ON: "Notifications on",
+  NOTIFICATIONS_OFF: "Notifications off",
+  TRANSFER_CONFIRMED: "Transfer confirmed",
+  TRANSFER_DELETED: "Transfer deleted",
+  DRAFT_DELETED: "Draft deleted",
+  APPROVED: "Transfer approved",
+  REJECTED: "Transfer rejected",
+  RECEIVED: "Transfer received",
+  PRODUCT_CREATED: "Product added",
+  PRODUCT_UPDATED: "Product edited",
+  CATALOG_IMPORTED: "Catalog imported",
+  CONFLICT_RESOLVED: "Conflict reviewed",
+  USER_CREATED: "User added",
+  USER_UPDATED: "User edited",
+  LOCATION_CREATED: "Location added",
+  LOCATION_UPDATED: "Location edited",
+  SETTINGS_UPDATED: "Settings changed",
+  ADMIN_PROVISIONED: "Administrator created",
+  SOURCES_RECONCILED: "Sources reconciled",
+  CONFLICTING_UNITS_HELD_FOR_REVIEW: "Units held for review",
+  BOOTSTRAP_ACCOUNT_PRESERVED: "First account kept",
+};
+function actionName(action: string, t: (key: string) => string) {
+  const translated = t(action);
+  if (translated !== action) return translated;
+  return (
+    actionNames[action] ??
+    action.charAt(0) + action.slice(1).toLowerCase().replace(/_/g, " ")
+  );
+}
 // One readable line per entry, built from what the entry recorded.
 function describe(a: AuditEntry, t: (key: string) => string) {
   const d = a.detail ?? {};
@@ -840,7 +882,7 @@ export function AuditPage() {
             <option value="">{t("All events")}</option>
             {auditActions.map((a) => (
               <option key={a} value={a}>
-                {t(a)}
+                {actionName(a, t)}
               </option>
             ))}
           </Dropdown>
@@ -849,7 +891,7 @@ export function AuditPage() {
           </span>
         </div>
         <div className="table-scroll">
-          <table className="data-table">
+          <table className="data-table audit-table">
             <thead>
               <tr>
                 {["Date", "User", "Action", "Details"].map((h) => (
@@ -867,22 +909,28 @@ export function AuditPage() {
                       : undefined
                   }
                 >
-                  <td dir="ltr">
+                  <td className="audit-date" dir="ltr">
                     {new Date(a.createdAt).toLocaleString("en-GB", {
                       timeZone: "Asia/Dubai",
                     })}
                   </td>
-                  <td>
+                  <td className="audit-actor">
                     {a.actorName ??
-                      (a.actor === "unknown" ? t("Unknown person") : a.actor)}
+                      (a.actor === "unknown"
+                        ? t("Unknown person")
+                        : a.actor.replace(/^system:/, ""))}
                   </td>
-                  <td>{t(a.action)}</td>
-                  <td dir="auto">
+                  <td className="audit-action">
+                    <strong>{actionName(a.action, t)}</strong>
+                  </td>
+                  <td className="audit-detail" dir="auto">
                     {describe(a, t) || "—"}
-                    <details>
-                      <summary className="muted small">{t("More")}</summary>
-                      <pre>{JSON.stringify(a.detail, null, 2)}</pre>
-                    </details>
+                    {a.detail && Object.keys(a.detail).length > 0 && (
+                      <details>
+                        <summary className="muted small">{t("More")}</summary>
+                        <pre>{JSON.stringify(a.detail, null, 2)}</pre>
+                      </details>
+                    )}
                   </td>
                 </tr>
               ))}

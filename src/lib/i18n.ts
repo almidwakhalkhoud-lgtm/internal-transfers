@@ -395,6 +395,7 @@ export const fa: Record<string, string> = {
   CONFLICTING_UNITS_HELD_FOR_REVIEW: "واحدها در انتظار بررسی",
   DRAFT_DELETED: "حذف پیش‌نویس",
   TRANSFER_DELETED: "حذف انتقال",
+  BOOTSTRAP_ACCOUNT_PRESERVED: "حفظ حساب اول",
   "Delete draft": "حذف پیش‌نویس",
   "Draft deleted": "پیش‌نویس حذف شد",
   "Draft not found": "پیش‌نویس پیدا نشد",

@@ -531,6 +531,13 @@ kbd {
   gap: 17px;
   align-items: end;
 }
+/* Every control in the row shares one height so labels and boxes line up. */
+.header-fields .dropdown-trigger,
+.header-fields .date-trigger,
+.header-fields input {
+  height: 44px;
+  min-height: 44px;
+}
 label {
   display: flex;
   flex-direction: column;
@@ -624,7 +631,7 @@ textarea {
 .entry-table th:last-child {
   width: 66px;
 }
-.row-actions {
+.line-actions {
   white-space: nowrap;
 }
 .icon-button.active {
@@ -1231,7 +1238,17 @@ textarea {
   max-width: 600px;
 }
 .settings-card form {
-  padding: 25px;
+  padding: 20px 25px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.settings-card form label {
+  align-self: stretch;
+}
+.settings-card form .notice {
+  align-self: stretch;
 }
 .settings-card label {
   max-width: 280px;
@@ -1239,7 +1256,7 @@ textarea {
 .settings-card p {
   font-size: calc(12px + var(--desktop-type-boost, 0px));
   color: #74667c;
-  margin-top: 20px;
+  margin: 0;
 }
 .detail-header {
   padding: 20px;
@@ -2760,6 +2777,60 @@ textarea::placeholder {
 .audit-warning td {
   background: #fff6f4;
 }
+.audit-table .audit-action strong {
+  font-weight: 600;
+  color: #2d2533;
+}
+.audit-table .audit-detail {
+  overflow-wrap: anywhere;
+}
+.audit-table pre {
+  white-space: pre-wrap;
+  max-width: 420px;
+}
+/* On phones each entry becomes a small card instead of a wide row. */
+@media (max-width: 700px) {
+  .audit-table thead {
+    display: none;
+  }
+  .audit-table,
+  .audit-table tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .audit-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .audit-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  .audit-table .audit-action {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .audit-table .audit-date {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: end;
+    color: #74667c;
+    font-size: calc(10px + var(--desktop-type-boost, 0px));
+  }
+  .audit-table .audit-actor,
+  .audit-table .audit-detail {
+    grid-column: 1 / -1;
+  }
+  .audit-table .audit-actor {
+    color: #74667c;
+  }
+}
 .unit-picker {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -2820,17 +2891,17 @@ textarea::placeholder {
 }
 .settings-body {
   padding: 20px 25px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
 }
-.settings-body > p:first-child {
-  margin-top: 0;
+.settings-body > .notice,
+.settings-body > .error {
+  align-self: stretch;
 }
 .push-actions {
   display: flex;
   gap: 9px;
   flex-wrap: wrap;
-  margin-top: 18px;
-}
-.settings-body .notice,
-.settings-body .error {
-  margin-top: 16px;
 }
