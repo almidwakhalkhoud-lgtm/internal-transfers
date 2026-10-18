@@ -53,6 +53,7 @@ type Summary = {
   total: string;
   approval: string;
   creator: { name: string };
+  qbmEntry?: { reference: string; enteredAt: string } | null;
 };
 export function useLoad<T>(path: string) {
   const sequence = useRef(0);
@@ -175,7 +176,10 @@ export function TransferTable({ items }: { items: Summary[] }) {
                   "col-start-2 row-start-1 text-end md:text-start",
                 )}
               >
-                <Status value={row.approval} />
+                <span className="inline-flex flex-wrap justify-end gap-1 md:justify-start">
+                  <Status value={row.approval} />
+                  {row.qbmEntry && <QbmBadge entry={row.qbmEntry} />}
+                </span>
               </td>
               <td
                 className={cx(
@@ -199,6 +203,19 @@ export function TransferTable({ items }: { items: Summary[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+// Shown once the QBM entry app reports that it typed the transfer into QBM.
+function QbmBadge({ entry }: { entry: { reference: string } }) {
+  const { t } = useBuzz();
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md border border-sky-100 bg-sky-50 px-2 py-1 text-xs whitespace-nowrap text-sky-800"
+      title={`${t("Entered in QBM")} · ${entry.reference}`}
+    >
+      <CheckCircle2 size={12} />
+      QBM <span dir="ltr">{entry.reference}</span>
+    </span>
   );
 }
 export function Empty({ title }: { title: string }) {
@@ -578,7 +595,10 @@ export function DetailPage({ id }: { id: string }) {
               <h2 className="m-0 text-xl font-semibold" dir="ltr">
                 {data.number}
               </h2>
-              <Status value={data.approval} />
+              <span className="flex flex-wrap gap-1.5">
+                <Status value={data.approval} />
+                {data.qbmEntry && <QbmBadge entry={data.qbmEntry} />}
+              </span>
             </div>
             <div className="mt-3 flex items-center gap-2 text-sm text-muted">
               <MapPin size={16} className="text-brand" />

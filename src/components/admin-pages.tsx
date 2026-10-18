@@ -675,6 +675,150 @@ function Notifications() {
     </Card>
   );
 }
+type ApiKeyRecord = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  _count: { qbmEntries: number };
+};
+// Keys for programs such as the QBM entry app. A new key is shown once.
+function ApiKeys() {
+  const { t, locale } = useBuzz();
+  const { data, error, load } = useLoad<ApiKeyRecord[]>("api-keys");
+  const [name, setName] = useState("QBM sync");
+  const [created, setCreated] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const when = (value: string | null) =>
+    value
+      ? new Date(value).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "Asia/Dubai",
+        })
+      : t("Never");
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader title={t("API keys")} />
+      <div className="flex flex-col gap-4 p-4 md:p-6">
+        <p className="m-0 text-sm leading-relaxed text-muted">
+          {t(
+            "Programs such as the QBM entry app use a key to read confirmed transfers and their items, and to mark them as entered in QBM. A key cannot change or delete anything else.",
+          )}
+        </p>
+        <LoadError error={error} load={load} />
+        {data?.map((k) => (
+          <div
+            key={k.id}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-line p-3"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <strong className="truncate text-sm">{k.name}</strong>
+                <Badge tone={k.revokedAt ? "bad" : "ok"}>
+                  {t(k.revokedAt ? "Revoked" : "Active")}
+                </Badge>
+              </div>
+              <div className="mt-1 text-xs text-subtle" dir="ltr">
+                {k.prefix}…
+              </div>
+              <div className="mt-1 text-xs text-subtle">
+                {t("Last used")}: {when(k.lastUsedAt)} ·{" "}
+                {t("Transfers entered")}: {k._count.qbmEntries}
+              </div>
+            </div>
+            {!k.revokedAt && (
+              <button
+                type="button"
+                className={cx(linkButton, "text-red-700")}
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      t("Revoke this key? Programs using it stop working."),
+                    )
+                  )
+                    return;
+                  try {
+                    await api(`api-keys/${k.id}/revoke`, {});
+                    load();
+                  } catch (e) {
+                    setErr((e as Error).message);
+                  }
+                }}
+              >
+                {t("Revoke")}
+              </button>
+            )}
+          </div>
+        ))}
+        <form
+          className="flex flex-col gap-2 sm:flex-row sm:items-end"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setErr("");
+            try {
+              const result = await api<{ key: string }>("api-keys", { name });
+              setCreated(result.key);
+              setCopied(false);
+              load();
+            } catch (e) {
+              setErr((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Field label={t("Key name")} className="flex-1">
+            <input
+              className={inputStyles}
+              value={name}
+              maxLength={60}
+              required
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" variant="primary" disabled={busy}>
+            <Plus size={16} />
+            {t("Create key")}
+          </Button>
+        </form>
+        {err && <Notice tone="error">{t(err)}</Notice>}
+      </div>
+      {created && (
+        <Modal title="New API key" onClose={() => setCreated("")}>
+          <p className="mt-0 mb-3 text-sm leading-relaxed text-muted">
+            {t(
+              "Copy the key now and paste it into the program. It is not shown again; if it is lost, revoke it and create a new one.",
+            )}
+          </p>
+          <code
+            className="block rounded-xl bg-brand-soft p-3 font-mono text-sm break-all select-all"
+            dir="ltr"
+          >
+            {created}
+          </code>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+            <Button
+              variant="primary"
+              onClick={async () => {
+                await navigator.clipboard.writeText(created);
+                setCopied(true);
+              }}
+            >
+              {t(copied ? "Copied" : "Copy key")}
+            </Button>
+            <Button onClick={() => setCreated("")}>{t("Done")}</Button>
+          </div>
+        </Modal>
+      )}
+    </Card>
+  );
+}
 export function SettingsPage() {
   const { t } = useBuzz();
   const { data, error, load } = useLoad<{ value: number }>("settings");
@@ -687,6 +831,7 @@ export function SettingsPage() {
       {!data && !error && <Skeleton rows={3} />}
       <div className="flex flex-col gap-4 md:gap-5">
         <Notifications />
+        <ApiKeys />
         <Card className="max-w-2xl">
           <CardHeader title={t("Numbering sequence")} />
           {data && (
@@ -760,6 +905,10 @@ const auditActions = [
   "LOGOUT",
   "NOTIFICATIONS_ON",
   "NOTIFICATIONS_OFF",
+  "QBM_ENTERED",
+  "QBM_ENTRY_REMOVED",
+  "API_KEY_CREATED",
+  "API_KEY_REVOKED",
   "TRANSFER_CONFIRMED",
   "TRANSFER_DELETED",
   "DRAFT_DELETED",
@@ -784,6 +933,10 @@ const actionNames: Record<string, string> = {
   LOGOUT: "Signed out",
   NOTIFICATIONS_ON: "Notifications on",
   NOTIFICATIONS_OFF: "Notifications off",
+  QBM_ENTERED: "Entered in QBM",
+  QBM_ENTRY_REMOVED: "QBM entry removed",
+  API_KEY_CREATED: "API key created",
+  API_KEY_REVOKED: "API key revoked",
   TRANSFER_CONFIRMED: "Transfer confirmed",
   TRANSFER_DELETED: "Transfer deleted",
   DRAFT_DELETED: "Draft deleted",
@@ -876,6 +1029,14 @@ function describe(a: AuditEntry, t: (key: string) => string) {
         .join(" · ");
     case "CATALOG_IMPORTED":
       return `${t("Imported")}: ${s("imported")} · ${t("Conflicts")}: ${s("conflicts")}`;
+    case "QBM_ENTERED":
+    case "QBM_ENTRY_REMOVED":
+      return [s("number"), s("reference") && `QBM ${s("reference")}`]
+        .filter(Boolean)
+        .join(" · ");
+    case "API_KEY_CREATED":
+    case "API_KEY_REVOKED":
+      return s("name");
     case "SETTINGS_UPDATED":
       return (
         s("nextValue") && `${t("Next transfer number")}: ${s("nextValue")}`
@@ -978,7 +1139,9 @@ export function AuditPage() {
                     {a.actorName ??
                       (a.actor === "unknown"
                         ? t("Unknown person")
-                        : a.actor.replace(/^system:/, ""))}
+                        : a.actor.startsWith("api:")
+                          ? `API · ${a.actor.slice(4)}`
+                          : a.actor.replace(/^system:/, ""))}
                   </td>
                   <td
                     className={cx(

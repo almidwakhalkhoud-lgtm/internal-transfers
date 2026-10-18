@@ -26,6 +26,7 @@ import {
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
 import { missingPushKeys, pushPublicKey, sendPush } from "@/lib/push";
+import { integrationApi, newApiKey } from "@/lib/integration-api";
 import { readFile, unlink } from "node:fs/promises";
 import { hasMenu, menus, landingPage } from "@/lib/permissions";
 import {
@@ -60,6 +61,7 @@ const summary = {
   approval: true,
   confirmedAt: true,
   creator: { select: { name: true } },
+  qbmEntry: { select: { reference: true, enteredAt: true } },
 };
 async function handle(
   req: NextRequest,
@@ -68,6 +70,8 @@ async function handle(
   try {
     const path = (await params).path.join("/");
     const method = req.method;
+    // Programs authenticate with an API key instead of a browser session.
+    if (path.startsWith("v1/")) return await integrationApi(req, path, method);
     if (method !== "GET") await sameOrigin();
     if (path === "login" && method === "POST") {
       const input = z
@@ -511,7 +515,10 @@ async function handle(
     if (match) {
       const t = await db.transfer.findUnique({
         where: { id: match[1] },
-        include: { creator: { select: { name: true } } },
+        include: {
+          creator: { select: { name: true } },
+          qbmEntry: { select: { reference: true, enteredAt: true } },
+        },
       });
       if (!t) throw new HttpError(404, "Transfer not found");
       if (!canAccess(user, t))
@@ -594,6 +601,47 @@ async function handle(
       }
     }
     await requireUser(true);
+    if (path === "api-keys" && method === "GET")
+      return NextResponse.json(
+        await db.apiKey.findMany({
+          select: {
+            id: true,
+            name: true,
+            prefix: true,
+            createdAt: true,
+            lastUsedAt: true,
+            revokedAt: true,
+            _count: { select: { qbmEntries: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
+    if (path === "api-keys" && method === "POST") {
+      const { name } = z
+        .object({ name: z.string().trim().min(1).max(60) })
+        .parse(await req.json());
+      const created = newApiKey();
+      const record = await db.apiKey.create({
+        data: {
+          name,
+          prefix: created.prefix,
+          hash: created.hash,
+          createdById: user.id,
+        },
+      });
+      await audit(user.id, "API_KEY_CREATED", record.id, { name });
+      // The only time the key leaves the server.
+      return NextResponse.json({ id: record.id, key: created.key });
+    }
+    const revoke = path.match(/^api-keys\/([^/]+)\/revoke$/);
+    if (revoke && method === "POST") {
+      const record = await db.apiKey.update({
+        where: { id: revoke[1] },
+        data: { revokedAt: new Date() },
+      });
+      await audit(user.id, "API_KEY_REVOKED", record.id, { name: record.name });
+      return NextResponse.json({ ok: true });
+    }
     if (path === "push" && method === "GET")
       return NextResponse.json({
         publicKey: pushPublicKey(),

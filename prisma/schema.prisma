@@ -125,6 +125,7 @@ model Transfer {
   pdf           Bytes?
   pdfHash       String?
   pdfError      Boolean            @default(false)
+  qbmEntry      QbmEntry?
 
   @@index([creatorId, confirmedAt])
   @@index([approval, confirmedAt])
@@ -147,4 +148,29 @@ model Audit {
   target    String
   detail    Json
   createdAt DateTime @default(now())
+}
+
+// Keys for programs (such as the QBM entry app) that read transfers. Only a
+// SHA-256 of the key is stored; the key itself is shown once when created.
+model ApiKey {
+  id          String     @id @default(cuid())
+  name        String
+  prefix      String
+  hash        String     @unique
+  createdById String
+  createdAt   DateTime   @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  qbmEntries  QbmEntry[]
+}
+
+// A transfer that has been typed into QBM. Kept apart from Transfer, whose
+// confirmed fields the database refuses to change.
+model QbmEntry {
+  transferId String   @id
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  reference  String
+  enteredAt  DateTime @default(now())
+  keyId      String
+  key        ApiKey   @relation(fields: [keyId], references: [id])
 }
