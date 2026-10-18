@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useBuzz, PageTitle, Status } from "./shell";
 import { api, downloadBlob } from "@/lib/client";
-import { quantity, totalQuantity, formatTotal } from "@/lib/domain";
+import { quantity, totalQuantity, formatTotal, renamable } from "@/lib/domain";
 export type Product = {
   updatedAt: string;
   id: string;
@@ -45,6 +45,7 @@ type Line = {
   quantity: string;
   unit: string;
   note?: string;
+  description?: string;
   error?: string;
   duplicateAccepted?: boolean;
 };
@@ -202,7 +203,12 @@ export function TransferForm({
         const existing = latest.current.find(
           (l) => l.id !== id && l.product?.id === product.id,
         );
-        update(id, { product, unit: product.units[0] ?? "", error: undefined });
+        update(id, {
+          product,
+          unit: product.units[0] ?? "",
+          description: undefined,
+          error: undefined,
+        });
         if (existing) {
           setDuplicate({ id, existingId: existing.id, product });
           return;
@@ -322,6 +328,10 @@ export function TransferForm({
           quantity: l.quantity,
           unit: l.unit,
           note: l.note?.trim() || undefined,
+          description:
+            renamable(l.product!.code) && l.description?.trim()
+              ? l.description.trim()
+              : undefined,
           duplicateAccepted: l.duplicateAccepted,
         })),
       });
@@ -822,12 +832,26 @@ const EntryRow = memo(function EntryRow({
         )}
       </td>
       <td>
-        <span
-          dir="auto"
-          className={product ? "description" : "description empty-description"}
-        >
-          {product?.description ?? t("Description appears automatically")}
-        </span>
+        {product && renamable(product.code) ? (
+          <input
+            id={`description-${line.id}`}
+            className="line-description"
+            aria-label={`${t("Product description")} ${index + 1}`}
+            dir="auto"
+            maxLength={2000}
+            value={line.description ?? product.description}
+            onChange={(e) => update(line.id, { description: e.target.value })}
+          />
+        ) : (
+          <span
+            dir="auto"
+            className={
+              product ? "description" : "description empty-description"
+            }
+          >
+            {product?.description ?? t("Description appears automatically")}
+          </span>
+        )}
         {noteOpen && (
           <input
             id={`note-${line.id}`}

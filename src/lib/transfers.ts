@@ -9,6 +9,7 @@ import {
   numberFor,
   routeCode,
   sequenceOf,
+  renamable,
   type SnapshotLine,
 } from "./domain";
 import { generatePdf } from "./pdf";
@@ -67,12 +68,14 @@ export async function confirmTransfer(user: User, input: unknown) {
             );
           if (line.unit !== "" && !p.units.includes(line.unit))
             throw new HttpError(400, `Invalid unit for ${p.code}`);
+          if (line.description && !renamable(p.code))
+            throw new HttpError(400, `The name of ${p.code} cannot be changed`);
           if (seen.has(p.id) && !line.duplicateAccepted)
             throw new HttpError(400, `Review duplicate product ${p.code}`);
           seen.add(p.id);
           return {
             code: p.code,
-            description: p.description,
+            description: line.description || p.description,
             barcodes: p.barcodes.map((b) => b.value),
             quantity: line.quantity,
             unit: line.unit,

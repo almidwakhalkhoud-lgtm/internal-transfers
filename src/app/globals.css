@@ -631,6 +631,10 @@ textarea {
   background: #f4f1f5;
   color: var(--accent);
 }
+.line-description {
+  width: 100%;
+  margin-top: 3px;
+}
 .line-note {
   width: 100%;
   margin-top: 4px;

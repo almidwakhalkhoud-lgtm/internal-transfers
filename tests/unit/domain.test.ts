@@ -12,6 +12,7 @@ import {
   validateCatalog,
   transferInput,
   unitsFromDescription,
+  renamable,
 } from "../../src/lib/domain";
 describe("exact product identifiers", () => {
   it("preserves zeros and internal spacing", () => {
@@ -144,5 +145,13 @@ describe("units from QBM pack sizes", () => {
   it("gives no units without a pack size", () => {
     expect(unitsFromDescription("Ocb Slim Filter")).toEqual([]);
     expect(unitsFromDescription("SUITCASE 4PCS SET (18/20)")).toEqual([]);
+  });
+});
+describe("renamable products", () => {
+  it("lets only the midwakh service code be renamed", () => {
+    expect(renamable("ss")).toBe(true);
+    expect(renamable(" SS ")).toBe(true);
+    expect(renamable("ss1")).toBe(false);
+    expect(renamable("1066")).toBe(false);
   });
 });

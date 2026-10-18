@@ -19,6 +19,7 @@ export const transferInput = z
           quantity,
           unit: z.string().max(100),
           note: z.string().trim().max(500).optional(),
+          description: z.string().trim().min(1).max(2000).optional(),
           duplicateAccepted: z.boolean().optional(),
         }),
       )
@@ -78,6 +79,9 @@ export function canAccess(
     user.locations.some((l) => l.id === t.sourceId || l.id === t.destinationId)
   );
 }
+// "ss" (midwakh service) stands for whatever service was done, so staff name
+// it on each transfer line. Every other product keeps its catalog name.
+export const renamable = (code: string) => code.trim().toLowerCase() === "ss";
 export const outerUnits = ["CTN", "BOX", "DOZEN", "SET", "PKTS"] as const;
 // QBM names carry the pack size: "(1x20)" is an outer unit of 20 pieces and
 // "(1x30x25)" a carton of 30 boxes of 25. A name without one has no units.
