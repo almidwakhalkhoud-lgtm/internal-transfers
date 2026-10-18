@@ -181,7 +181,10 @@ function DropdownControl({
     button.current?.focus();
   }
   return (
-    <div className={`dropdown ${className ?? ""}`} ref={root}>
+    <div
+      className={`dropdown relative w-full min-w-0 ${className ?? ""}`}
+      ref={root}
+    >
       {name && <input type="hidden" name={name} value={selected} />}
       <button
         type="button"
@@ -198,7 +201,7 @@ function DropdownControl({
         aria-haspopup="listbox"
         aria-activedescendant={open ? `${listId}-${active}` : undefined}
         disabled={disabled}
-        className="dropdown-trigger"
+        className="dropdown-trigger flex min-h-11 w-full items-center justify-between gap-2.5 rounded-lg border border-line bg-white px-3 text-start text-base text-ink focus-visible:border-brand disabled:bg-zinc-50 disabled:text-muted md:min-h-10 md:text-sm"
         onBlur={(e) => {
           onBlur?.(e as unknown as React.FocusEvent<HTMLSelectElement>);
           if (!e.currentTarget.parentElement?.contains(e.relatedTarget))
@@ -274,8 +277,10 @@ function DropdownControl({
           }
         }}
       >
-        <span>{options.find((o) => o.value === selected)?.label ?? "—"}</span>
-        <ChevronDown size={15} />
+        <span className="truncate">
+          {options.find((o) => o.value === selected)?.label ?? "—"}
+        </span>
+        <ChevronDown size={16} className="shrink-0 text-subtle" />
       </button>
       {open && (
         <div
@@ -283,7 +288,7 @@ function DropdownControl({
           popover="manual"
           id={listId}
           role="listbox"
-          className="dropdown-list"
+          className="dropdown-list rounded-xl border border-line bg-white p-1 shadow-xl"
         >
           {options.map((option, i) => (
             <div
@@ -296,7 +301,7 @@ function DropdownControl({
               key={option.value}
               aria-selected={option.value === selected}
               aria-disabled={option.disabled}
-              className={`dropdown-option ${active === i ? "highlighted" : ""}`}
+              className={`dropdown-option flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-3 text-base aria-disabled:pointer-events-none aria-disabled:opacity-40 aria-selected:text-brand md:min-h-9 md:text-sm ${active === i ? "bg-brand-soft text-brand" : ""}`}
               onPointerMove={() => setActive(i)}
               onPointerDown={(e) => e.preventDefault()}
               onClick={(event) => {

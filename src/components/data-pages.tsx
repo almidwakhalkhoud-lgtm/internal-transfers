@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
+import { buttonStyles } from "./ui";
 import { SuccessActions, Modal, type Product } from "./transfer-form";
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
 import {
@@ -70,8 +71,18 @@ export function LoadError({
 }) {
   const { t } = useBuzz();
   return error ? (
-    <div className="error" role="alert">
-      {t(error)} <button onClick={load}>{t("Retry")}</button>
+    <div
+      className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700"
+      role="alert"
+    >
+      <span>{t(error)}</span>
+      <button
+        type="button"
+        className="min-h-9 shrink-0 rounded-md border-0 bg-transparent px-2 font-semibold underline underline-offset-2"
+        onClick={load}
+      >
+        {t("Retry")}
+      </button>
     </div>
   ) : null;
 }
@@ -157,11 +168,11 @@ export function TransferTable({ items }: { items: Summary[] }) {
 export function Empty({ title }: { title: string }) {
   const { t } = useBuzz();
   return (
-    <div className="empty-state">
-      <span>
+    <div className="px-5 py-10 text-center">
+      <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-brand-soft text-subtle">
         <Package size={24} />
       </span>
-      <p>{t(title)}</p>
+      <p className="m-0 text-sm text-subtle">{t(title)}</p>
     </div>
   );
 }
@@ -419,23 +430,23 @@ export function Pagination({
 }) {
   const { t } = useBuzz();
   return (
-    <div className="pagination">
+    <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm text-subtle md:px-5">
       <span>
         {count
           ? `${page * size + 1}–${Math.min((page + 1) * size, count)}`
           : "0"}{" "}
         / {count.toLocaleString()}
       </span>
-      <div>
+      <div className="flex gap-2">
         <button
-          className="button"
+          className={buttonStyles.secondary}
           disabled={!page}
           onClick={() => setPage(page - 1)}
         >
           {t("Previous")}
         </button>
         <button
-          className="button"
+          className={buttonStyles.secondary}
           disabled={(page + 1) * size >= count}
           onClick={() => setPage(page + 1)}
         >

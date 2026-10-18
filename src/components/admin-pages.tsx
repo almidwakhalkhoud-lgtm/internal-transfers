@@ -8,7 +8,24 @@ import { useState, useEffect, useSyncExternalStore } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
-import { Button, Card, CardHeader, Field, Notice, inputStyles } from "./ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  CellLabel,
+  Field,
+  Notice,
+  checkbox,
+  cx,
+  inputStyles,
+  linkButton,
+  table,
+} from "./ui";
+const fieldset = "m-0 flex flex-col gap-1 rounded-xl border border-line p-3";
+const legend = "px-1 text-sm font-medium text-muted";
+const checkRow =
+  "m-0 flex min-h-11 cursor-pointer flex-row items-center gap-3 rounded-lg px-2 text-sm font-normal text-ink hover:bg-zinc-50 md:min-h-9";
 import { useLoad, LoadError, Empty, Pagination } from "./data-pages";
 import { Modal } from "./transfer-form";
 export function LocationsPage() {
@@ -27,8 +44,8 @@ export function LocationsPage() {
         title="Locations"
         action={
           user.role === "ADMIN" && (
-            <button
-              className="button primary"
+            <Button
+              variant="primary"
               onClick={() => {
                 setEditing(null);
                 setErr("");
@@ -37,27 +54,36 @@ export function LocationsPage() {
             >
               <Plus size={16} />
               {t("Add location")}
-            </button>
+            </Button>
           )
         }
       />
       <LoadError error={error || err} load={load} />
       {!data && !error && <Skeleton />}
-      <div className="locations-grid">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4 xl:grid-cols-3">
         {data?.map((l) => (
-          <article key={l.id} className="card location-card">
-            <span className="location-pin">
-              <MapPin size={23} />
+          <article
+            key={l.id}
+            className="flex items-center gap-3 rounded-xl border border-line bg-white p-4 md:flex-col md:items-start md:gap-4 md:p-6"
+          >
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand md:size-12">
+              <MapPin size={22} />
             </span>
-            <h2>{l.name}</h2>
-            <span className={`badge ${l.active ? "approved" : "rejected"}`}>
-              <span />
-              {t(l.active ? "Active" : "Inactive")}
-            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="m-0 truncate text-base font-semibold md:text-lg">
+                {l.name}
+              </h2>
+              <div className="mt-1.5">
+                <Badge tone={l.active ? "ok" : "bad"}>
+                  {t(l.active ? "Active" : "Inactive")}
+                </Badge>
+              </div>
+            </div>
             {user.role === "ADMIN" && (
-              <div className="location-edit">
+              <div className="flex shrink-0 flex-col items-end md:flex-row md:items-center md:gap-4">
                 <button
-                  className="text-button"
+                  type="button"
+                  className={linkButton}
                   onClick={() => {
                     setEditing(l);
                     setErr("");
@@ -67,7 +93,8 @@ export function LocationsPage() {
                   {t("Edit")}
                 </button>
                 <button
-                  className="text-button"
+                  type="button"
+                  className={linkButton}
                   onClick={async () => {
                     try {
                       await api(
@@ -95,6 +122,7 @@ export function LocationsPage() {
           onClose={() => setAdd(false)}
         >
           <Form
+            className="flex flex-col gap-4"
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
@@ -111,21 +139,19 @@ export function LocationsPage() {
               }
             }}
           >
-            <label>
-              {t("Location name")}
+            <Field label={t("Location name")}>
               <input
+                className={inputStyles}
                 name="name"
                 defaultValue={editing?.name ?? ""}
                 required
                 maxLength={100}
               />
-            </label>
-            {err && (
-              <div className="error" role="alert">
-                {t(err)}
-              </div>
-            )}
-            <button className="button primary">{t("Save")}</button>
+            </Field>
+            {err && <Notice tone="error">{t(err)}</Notice>}
+            <Button type="submit" variant="primary">
+              {t("Save")}
+            </Button>
           </Form>
         </Modal>
       )}
@@ -171,8 +197,8 @@ export function UsersPage() {
         eyebrow="Administration"
         title="Users"
         action={
-          <button
-            className="button primary"
+          <Button
+            variant="primary"
             onClick={() => {
               setErr("");
               setModal("new");
@@ -180,20 +206,20 @@ export function UsersPage() {
           >
             <Plus size={16} />
             {t("Create user")}
-          </button>
+          </Button>
         }
       />
       <LoadError error={error || err} load={load} />
       {notice && (
-        <p className="notice" role="status">
-          {t(notice)}
-        </p>
+        <div className="mb-4">
+          <Notice>{t(notice)}</Notice>
+        </div>
       )}
       {!data && !error && <Skeleton />}
-      <section className="card">
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
+      <Card>
+        <div className={table.wrap}>
+          <table className={table.table}>
+            <thead className={table.head}>
               <tr>
                 {[
                   "Name",
@@ -203,41 +229,62 @@ export function UsersPage() {
                   "Status",
                   "Actions",
                 ].map((k) => (
-                  <th key={k}>{t(k)}</th>
+                  <th key={k} className={table.th}>
+                    {t(k)}
+                  </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={table.body}>
               {data?.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <strong>{u.name}</strong>
-                    <small className="block muted" dir="ltr">
-                      {u.email}
-                    </small>
+                <tr key={u.id} className={table.row}>
+                  <td className={cx(table.td, "flex items-start gap-3")}>
+                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand md:hidden">
+                      {u.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <strong className="block font-semibold text-ink">
+                        {u.name}
+                      </strong>
+                      <small
+                        className="block truncate text-xs text-subtle"
+                        dir="ltr"
+                      >
+                        {u.email}
+                      </small>
+                    </div>
+                    <span className="md:hidden">
+                      <Badge tone={u.active ? "ok" : "bad"}>
+                        {t(u.active ? "Active" : "Inactive")}
+                      </Badge>
+                    </span>
                   </td>
-                  <td>{t(u.role === "ADMIN" ? "Administrator" : "Staff")}</td>
-                  <td>
+                  <td className={table.td}>
+                    <CellLabel>{t("Role")}</CellLabel>
+                    {t(u.role === "ADMIN" ? "Administrator" : "Staff")}
+                  </td>
+                  <td className={table.td}>
+                    <CellLabel>{t("Accessible locations")}</CellLabel>
                     {u.role === "ADMIN"
                       ? t("All locations")
                       : u.locations.map((l) => l.name).join(" · ")}
                   </td>
-                  <td>
+                  <td className={table.td}>
+                    <CellLabel>{t("Menu permissions")}</CellLabel>
                     {u.role === "ADMIN"
                       ? t("All menus")
                       : u.menus.map((m) => t(menuLabels[m])).join(" · ")}
                   </td>
-                  <td>
-                    <span
-                      className={`badge ${u.active ? "approved" : "rejected"}`}
-                    >
+                  <td className={cx(table.td, "hidden md:table-cell")}>
+                    <Badge tone={u.active ? "ok" : "bad"}>
                       {t(u.active ? "Active" : "Inactive")}
-                    </span>
+                    </Badge>
                   </td>
-                  <td>
-                    <div className="row-actions">
+                  <td className={table.td}>
+                    <div className="-mx-1 flex flex-wrap gap-x-3 md:flex-nowrap">
                       <button
-                        className="text-button"
+                        type="button"
+                        className={linkButton}
                         onClick={() => {
                           setErr("");
                           setModal(u);
@@ -246,19 +293,21 @@ export function UsersPage() {
                         {t("Edit")}
                       </button>
                       <Link
-                        className="text-button"
+                        className={linkButton}
                         href={`/transfers?creator=${encodeURIComponent(u.id)}`}
                       >
                         {t("User transfers")}
                       </Link>
                       <button
-                        className="text-button"
+                        type="button"
+                        className={linkButton}
                         onClick={() => setRotate(u)}
                       >
                         {t("Manage access code")}
                       </button>
                       <button
-                        className="text-button"
+                        type="button"
+                        className={linkButton}
                         disabled={u.id === user.id}
                         onClick={() => update(u.id, { active: !u.active })}
                       >
@@ -271,13 +320,14 @@ export function UsersPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
       {modal && (
         <Modal
           title={modal === "new" ? "Create user" : "Edit user"}
           onClose={() => setModal(null)}
         >
           <Form
+            className="flex flex-col gap-4"
             key={modal === "new" ? "new" : modal.id}
             onSubmit={async (e) => {
               e.preventDefault();
@@ -317,36 +367,36 @@ export function UsersPage() {
               }
             }}
           >
-            <label>
-              {t("Name")}
+            <Field label={t("Name")}>
               <input
+                className={inputStyles}
                 name="name"
                 defaultValue={modal === "new" ? "" : modal.name}
                 required
                 maxLength={100}
               />
-            </label>
+            </Field>
             {modal === "new" && (
               <>
-                <label>
-                  {t("Email")}
+                <Field label={t("Email")}>
                   <input
+                    className={inputStyles}
+                    dir="ltr"
                     name="email"
                     type="email"
                     required
                     autoComplete="off"
                   />
-                </label>
-                <label>
-                  {t("Role")}
+                </Field>
+                <Field label={t("Role")}>
                   <Dropdown name="role" defaultValue="STAFF">
                     <option value="STAFF">{t("Staff")}</option>
                     <option value="ADMIN">{t("Administrator")}</option>
                   </Dropdown>
-                </label>
-                <label>
-                  {t("Access code")}
+                </Field>
+                <Field label={t("Access code")}>
                   <input
+                    className={inputStyles}
                     name="accessCode"
                     required
                     minLength={8}
@@ -356,19 +406,20 @@ export function UsersPage() {
                     spellCheck={false}
                     dir="ltr"
                   />
-                </label>
-                <p className="notice">
+                </Field>
+                <p className="m-0 text-xs leading-relaxed text-subtle">
                   {t(
                     "Choose 8–32 English letters or digits. Codes ignore letter case and stay valid until changed or revoked.",
                   )}
                 </p>
               </>
             )}
-            <fieldset>
-              <legend>{t("Accessible locations")}</legend>
+            <fieldset className={fieldset}>
+              <legend className={legend}>{t("Accessible locations")}</legend>
               {locations.data?.map((l) => (
-                <label className="checkbox-label" key={l.id}>
+                <label className={checkRow} key={l.id}>
                   <input
+                    className={checkbox}
                     type="checkbox"
                     name="locations"
                     value={l.id}
@@ -381,11 +432,12 @@ export function UsersPage() {
                 </label>
               ))}
             </fieldset>
-            <fieldset>
-              <legend>{t("Menu permissions")}</legend>
+            <fieldset className={fieldset}>
+              <legend className={legend}>{t("Menu permissions")}</legend>
               {menus.map((m) => (
-                <label className="checkbox-label" key={m}>
+                <label className={checkRow} key={m}>
                   <input
+                    className={checkbox}
                     type="checkbox"
                     name="menus"
                     value={m}
@@ -395,27 +447,24 @@ export function UsersPage() {
                 </label>
               ))}
             </fieldset>
-            {err && (
-              <div className="error" role="alert">
-                {t(err)}
-              </div>
-            )}
-            <button className="button primary" disabled={busy}>
+            {err && <Notice tone="error">{t(err)}</Notice>}
+            <Button type="submit" variant="primary" disabled={busy}>
               <UsersIcon size={16} />
               {t("Save")}
-            </button>
+            </Button>
           </Form>
         </Modal>
       )}
       {rotate && (
         <Modal title="Manage access code" onClose={() => setRotate(null)}>
-          <p>{rotate.name}</p>
-          <p>
+          <p className="m-0 font-semibold">{rotate.name}</p>
+          <p className="mt-1 mb-4 text-sm leading-relaxed text-muted">
             {t(
               "Replacing or revoking the code signs out all existing sessions.",
             )}
           </p>
           <Form
+            className="flex flex-col gap-4"
             onSubmit={async (event) => {
               event.preventDefault();
               setBusy(true);
@@ -439,9 +488,9 @@ export function UsersPage() {
               }
             }}
           >
-            <label>
-              {t("New access code")}
+            <Field label={t("New access code")}>
               <input
+                className={inputStyles}
                 name="accessCode"
                 required
                 minLength={8}
@@ -451,24 +500,20 @@ export function UsersPage() {
                 spellCheck={false}
                 dir="ltr"
               />
-            </label>
-            <p className="notice">
+            </Field>
+            <p className="m-0 text-xs leading-relaxed text-subtle">
               {t(
                 "Choose 8–32 English letters or digits. Codes ignore letter case and stay valid until changed or revoked.",
               )}
             </p>
-            {err && (
-              <p className="error" role="alert">
-                {t(err)}
-              </p>
-            )}
-            <button className="button primary" disabled={busy}>
+            {err && <Notice tone="error">{t(err)}</Notice>}
+            <Button type="submit" variant="primary" disabled={busy}>
               {t("Save access code")}
-            </button>
+            </Button>
           </Form>
-          <button
-            type="button"
-            className="button danger"
+          <Button
+            variant="danger"
+            className="mt-3 w-full"
             disabled={busy}
             onClick={async () => {
               await update(rotate.id, { revokeCode: true });
@@ -476,7 +521,7 @@ export function UsersPage() {
             }}
           >
             {t("Revoke code")}
-          </button>
+          </Button>
         </Modal>
       )}
     </>
@@ -852,8 +897,8 @@ export function AuditPage() {
     <>
       <PageTitle eyebrow="Administration" title="Audit log" />
       <LoadError error={error} load={load} />
-      <section className="card">
-        <div className="filter-bar">
+      <Card>
+        <div className="grid grid-cols-1 gap-2 border-b border-line p-3 sm:grid-cols-2 md:flex md:items-center md:gap-3 md:p-4 [&>.dropdown]:md:max-w-64">
           <Dropdown
             aria-label={t("User")}
             value={actor}
@@ -884,57 +929,88 @@ export function AuditPage() {
               </option>
             ))}
           </Dropdown>
-          <span className="muted">
+          <span className="text-sm text-subtle sm:col-span-2 md:ms-auto">
             {data?.count.toLocaleString() ?? "—"} {t("entries")}
           </span>
         </div>
-        <div className="table-scroll">
-          <table className="data-table audit-table">
-            <thead>
+        <div className={table.wrap}>
+          <table className={table.table}>
+            <thead className={table.head}>
               <tr>
                 {["Date", "User", "Action", "Details"].map((h) => (
-                  <th key={h}>{t(h)}</th>
+                  <th key={h} className={table.th}>
+                    {t(h)}
+                  </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={table.body}>
               {data?.items.map((a) => (
                 <tr
                   key={a.id}
-                  className={
-                    a.action === "LOGIN_FAILED" || a.action === "LOGIN_BLOCKED"
-                      ? "audit-warning"
-                      : undefined
-                  }
+                  className={cx(
+                    "grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-b border-line px-4 py-4 md:table-row md:p-0",
+                    (a.action === "LOGIN_FAILED" ||
+                      a.action === "LOGIN_BLOCKED") &&
+                      "bg-red-50/60",
+                  )}
                 >
-                  <td className="audit-date" dir="ltr">
+                  <td
+                    className={cx(
+                      table.td,
+                      "col-start-2 row-start-1 text-end text-xs whitespace-nowrap text-subtle md:text-start md:text-sm md:text-ink",
+                    )}
+                    dir="ltr"
+                  >
                     {new Date(a.createdAt).toLocaleString("en-GB", {
                       timeZone: "Asia/Dubai",
                     })}
                   </td>
-                  <td className="audit-actor">
+                  <td
+                    className={cx(
+                      table.td,
+                      "col-span-2 text-subtle md:text-ink",
+                    )}
+                  >
                     {a.actorName ??
                       (a.actor === "unknown"
                         ? t("Unknown person")
                         : a.actor.replace(/^system:/, ""))}
                   </td>
-                  <td className="audit-action">
-                    <strong>{actionName(a.action, t)}</strong>
+                  <td
+                    className={cx(
+                      table.td,
+                      "col-start-1 row-start-1 md:whitespace-nowrap",
+                    )}
+                  >
+                    <strong className="font-semibold text-ink">
+                      {actionName(a.action, t)}
+                    </strong>
                   </td>
-                  <td className="audit-detail" dir="auto">
+                  <td
+                    className={cx(
+                      table.td,
+                      "col-span-2 [overflow-wrap:anywhere]",
+                    )}
+                    dir="auto"
+                  >
                     {describe(a, t) || "—"}
                     {a.detail && Object.keys(a.detail).length > 0 && (
-                      <details>
-                        <summary className="muted small">{t("More")}</summary>
-                        <pre>{JSON.stringify(a.detail, null, 2)}</pre>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-subtle">
+                          {t("More")}
+                        </summary>
+                        <pre className="mt-2 max-w-md overflow-x-auto rounded-lg bg-zinc-50 p-3 text-xs whitespace-pre-wrap">
+                          {JSON.stringify(a.detail, null, 2)}
+                        </pre>
                       </details>
                     )}
                   </td>
                 </tr>
               ))}
               {data && !data.items.length && (
-                <tr>
-                  <td colSpan={4}>
+                <tr className="block md:table-row">
+                  <td colSpan={4} className="block md:table-cell">
                     <Empty title="No records" />
                   </td>
                 </tr>
@@ -950,7 +1026,7 @@ export function AuditPage() {
             setPage={setPage}
           />
         )}
-      </section>
+      </Card>
     </>
   );
 }
