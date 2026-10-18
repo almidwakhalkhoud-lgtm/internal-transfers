@@ -25,7 +25,7 @@ import {
   type CatalogRow,
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
-import { notifyAdmins, pushPublicKey } from "@/lib/push";
+import { pushPublicKey, sendPush } from "@/lib/push";
 import { readFile, unlink } from "node:fs/promises";
 import { hasMenu, menus, landingPage } from "@/lib/permissions";
 import {
@@ -605,11 +605,19 @@ async function handle(
       return NextResponse.json({ ok: true });
     }
     if (path === "push/test" && method === "POST") {
-      await notifyAdmins({
-        title: "BUZZ",
-        body: "Notifications are working.",
-        url: "/settings",
-      });
+      const result = await sendPush(
+        { userId: user.id },
+        { title: "BUZZ", body: "Notifications are working.", url: "/settings" },
+      );
+      if (!result.sent)
+        return NextResponse.json(
+          {
+            error: result.errors.length
+              ? `The push service refused the test: ${result.errors[0]}`
+              : "This account has no device with notifications on.",
+          },
+          { status: 502 },
+        );
       return NextResponse.json({ ok: true });
     }
     if (path.startsWith("products/") && method === "PATCH") {

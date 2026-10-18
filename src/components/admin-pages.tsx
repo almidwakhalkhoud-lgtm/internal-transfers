@@ -536,91 +536,94 @@ function Notifications() {
       <div className="card-heading">
         <h2>{t("Transfer notifications")}</h2>
       </div>
-      <p className="muted">
-        {t(
-          "Get a notification on this device whenever anyone confirms a transfer.",
-        )}
-      </p>
-      {!supported ? (
-        <p className="error">
+      <div className="settings-body">
+        <p className="muted">
           {t(
-            "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
+            "Get a notification on this device whenever anyone confirms a transfer.",
           )}
         </p>
-      ) : server && !server.publicKey ? (
-        <p className="error">
-          {t("Notifications are not configured on the server yet.")}
-        </p>
-      ) : (
-        <div className="modal-actions">
-          {subscription ? (
-            <>
+        {!supported ? (
+          <p className="error">
+            {t(
+              "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
+            )}
+          </p>
+        ) : server && !server.publicKey ? (
+          <p className="error">
+            {t("Notifications are not configured on the server yet.")}
+          </p>
+        ) : (
+          <div className="push-actions">
+            {subscription ? (
+              <>
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      await api("push/test", {});
+                      return "Test notification sent";
+                    })
+                  }
+                >
+                  {t("Send a test")}
+                </button>
+                <button
+                  className="button danger"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      await api("push/unsubscribe", {
+                        endpoint: subscription.endpoint,
+                      });
+                      await subscription.unsubscribe();
+                      setSubscription(null);
+                      return "Notifications turned off on this device";
+                    })
+                  }
+                >
+                  {t("Turn off on this device")}
+                </button>
+              </>
+            ) : (
               <button
-                className="button"
-                disabled={busy}
+                className="button primary"
+                disabled={busy || !server}
                 onClick={() =>
                   run(async () => {
-                    await api("push/test", {});
-                    return "Test notification sent";
-                  })
-                }
-              >
-                {t("Send a test")}
-              </button>
-              <button
-                className="button danger"
-                disabled={busy}
-                onClick={() =>
-                  run(async () => {
-                    await api("push/unsubscribe", {
-                      endpoint: subscription.endpoint,
+                    if ((await Notification.requestPermission()) !== "granted")
+                      throw new Error(
+                        "Notifications are blocked. Allow them in the browser settings.",
+                      );
+                    const registration = await navigator.serviceWorker.ready;
+                    const sub = await registration.pushManager.subscribe({
+                      userVisibleOnly: true,
+                      applicationServerKey: vapidKey(server!.publicKey),
                     });
-                    await subscription.unsubscribe();
-                    setSubscription(null);
-                    return "Notifications turned off on this device";
+                    await api("push/subscribe", sub.toJSON());
+                    setSubscription(sub);
+                    return "Notifications turned on for this device";
                   })
                 }
               >
-                {t("Turn off on this device")}
+                {t("Turn on for this device")}
               </button>
-            </>
-          ) : (
-            <button
-              className="button primary"
-              disabled={busy || !server}
-              onClick={() =>
-                run(async () => {
-                  if ((await Notification.requestPermission()) !== "granted")
-                    throw new Error(
-                      "Notifications are blocked. Allow them in the browser settings.",
-                    );
-                  const registration = await navigator.serviceWorker.ready;
-                  const sub = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: vapidKey(server!.publicKey),
-                  });
-                  await api("push/subscribe", sub.toJSON());
-                  setSubscription(sub);
-                  return "Notifications turned on for this device";
-                })
-              }
-            >
-              {t("Turn on for this device")}
-            </button>
-          )}
-          {server && (
-            <span className="muted">
-              {t("Devices receiving notifications")}: {server.devices}
-            </span>
-          )}
-        </div>
-      )}
-      {message && <p className="notice">{t(message)}</p>}
-      {err && (
-        <p className="error" role="alert">
-          {t(err)}
-        </p>
-      )}
+            )}
+          </div>
+        )}
+        {server && server.publicKey && (
+          <p>
+            {t("Devices receiving notifications")}:{" "}
+            <strong>{server.devices}</strong>
+          </p>
+        )}
+        {message && <p className="notice">{t(message)}</p>}
+        {err && (
+          <p className="error" role="alert">
+            {t(err)}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

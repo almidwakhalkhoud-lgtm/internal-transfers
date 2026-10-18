@@ -353,6 +353,8 @@ export const fa: Record<string, string> = {
     "اعلان‌ها هنوز روی سرور تنظیم نشده‌اند.",
   "Send a test": "ارسال اعلان آزمایشی",
   "Test notification sent": "اعلان آزمایشی ارسال شد",
+  "This account has no device with notifications on.":
+    "هیچ دستگاهی با اعلان روشن برای این حساب ثبت نشده است.",
   "Turn off on this device": "خاموش کردن روی این دستگاه",
   "Turn on for this device": "روشن کردن روی این دستگاه",
   "Notifications turned off on this device": "اعلان‌ها روی این دستگاه خاموش شد",

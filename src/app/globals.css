@@ -2815,3 +2815,22 @@ textarea::placeholder {
   opacity: 0.45;
   cursor: default;
 }
+.settings-card + .settings-card {
+  margin-top: 18px;
+}
+.settings-body {
+  padding: 20px 25px 25px;
+}
+.settings-body > p:first-child {
+  margin-top: 0;
+}
+.push-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.settings-body .notice,
+.settings-body .error {
+  margin-top: 16px;
+}
