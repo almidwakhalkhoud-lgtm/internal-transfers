@@ -12,6 +12,7 @@ import {
   useLayoutEffect,
   useCallback,
   memo,
+  Fragment,
 } from "react";
 import {
   ArrowRight,
@@ -26,8 +27,29 @@ import {
   Keyboard,
   Save,
   FileText,
+  MessageSquarePlus,
 } from "lucide-react";
 import { useBuzz, PageTitle, Status } from "./shell";
+import {
+  Button,
+  Card,
+  CardHeader,
+  Field,
+  Notice,
+  buttonStyles,
+  cx,
+  iconButton,
+  iconButtonActive,
+  inputStyles,
+  linkButton,
+  table,
+} from "./ui";
+const kbd =
+  "rounded border border-line bg-zinc-50 px-1 py-0.5 font-sans text-[10px] text-subtle";
+const reviewGrid =
+  "m-0 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm";
+const reviewValue = "m-0 text-end font-semibold";
+const modalActions = "mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end";
 import { api, downloadBlob } from "@/lib/client";
 import {
   quantity,
@@ -400,212 +422,251 @@ export function TransferForm({
         title="New transfer"
         subtitle="Prepare, confirm and share inventory transfer documents."
         action={
-          <span className="keyboard-ready">
-            <span />
+          <span className="hidden items-center gap-2 text-xs text-subtle lg:flex">
+            <span className="size-1.5 rounded-full bg-ok" />
             {t("Keyboard ready")}
           </span>
         }
       />
-      <div className="workflow">
-        <span className="current">
-          <b>1</b>
-          {t("Transfer details")}
-        </span>
-        <span className="step-line" />
-        <span>
-          <b>2</b>
-          {t("Transfer items")}
-        </span>
-        <span className="step-line" />
-        <span>
-          <b>3</b>
-          {t("Review and confirm")}
-        </span>
-        <div className="workflow-right">
+      <div className="mb-5 hidden items-center gap-3 text-xs text-subtle md:flex">
+        {["Transfer details", "Transfer items", "Review and confirm"].map(
+          (step, i) => (
+            <Fragment key={step}>
+              {i > 0 && <span className="h-px max-w-12 flex-1 bg-line" />}
+              <span
+                className={cx(
+                  "flex items-center gap-2 whitespace-nowrap",
+                  i === 0 && "text-ink",
+                )}
+              >
+                <b
+                  className={cx(
+                    "inline-flex size-5 items-center justify-center rounded-full border text-[10px] font-medium",
+                    i === 0
+                      ? "border-brand-soft bg-brand-soft text-brand"
+                      : "border-line",
+                  )}
+                >
+                  {i + 1}
+                </b>
+                {t(step)}
+              </span>
+            </Fragment>
+          ),
+        )}
+        <div className="ms-auto hidden items-center gap-2 lg:flex">
           <Keyboard size={15} />
-          <kbd>TAB</kbd> {t("Next item")}
+          <kbd className={kbd}>TAB</kbd> {t("Next item")}
         </div>
       </div>
-      {error && (
-        <div className="error" role="alert">
-          {t(error)}
-        </div>
-      )}
-      {notice && (
-        <div className="notice" role="status">
-          {t(notice)}
-        </div>
-      )}
-      <section className="card transfer-header">
-        <div className="card-heading">
-          <div>
-            <span className="section-index">01</span>
-            <h2>{t("Transfer details")}</h2>
-          </div>
-          <Status value="DRAFT" />
-        </div>
-        <div className="header-fields">
-          <label>
-            {t("From location")}
-            {own.length === 1 ? (
-              <input
-                aria-label={t("From location")}
-                value={own[0].name}
-                readOnly
-                className="readonly"
-              />
-            ) : (
+      <div className="flex flex-col gap-4 pb-28 md:gap-5 md:pb-0">
+        {error && <Notice tone="error">{t(error)}</Notice>}
+        {notice && <Notice>{t(notice)}</Notice>}
+        <Card>
+          <CardHeader index="01" title={t("Transfer details")}>
+            <Status value="DRAFT" />
+          </CardHeader>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-x-2 gap-y-4 p-4 md:p-6 lg:grid-cols-[1.2fr_auto_1.2fr_1fr_1fr] lg:gap-x-4">
+            <Field label={t("From location")}>
+              {own.length === 1 ? (
+                <input
+                  className={inputStyles}
+                  aria-label={t("From location")}
+                  value={own[0].name}
+                  readOnly
+                />
+              ) : (
+                <Dropdown
+                  aria-label={t("From location")}
+                  value={sourceId}
+                  onChange={(e) => setSource(e.target.value)}
+                >
+                  <option value="">{t("Select location")}</option>
+                  {own.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Dropdown>
+              )}
+            </Field>
+            <span className="flex h-11 items-center self-end text-subtle md:h-10">
+              <ArrowRight size={18} className="rtl:-scale-x-100" />
+            </span>
+            <Field label={t("To location")}>
               <Dropdown
-                aria-label={t("From location")}
-                value={sourceId}
-                onChange={(e) => setSource(e.target.value)}
+                aria-label={t("To location")}
+                value={destinationId}
+                onChange={(e) => setDestination(e.target.value)}
               >
                 <option value="">{t("Select location")}</option>
-                {own.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
+                {locations
+                  .filter((l) => l.id !== sourceId)
+                  .map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
               </Dropdown>
-            )}
-          </label>
-          <span className="route-arrow">
-            <ArrowRight size={19} />
-          </span>
-          <label>
-            {t("To location")}
-            <Dropdown
-              aria-label={t("To location")}
-              value={destinationId}
-              onChange={(e) => setDestination(e.target.value)}
-            >
-              <option value="">{t("Select location")}</option>
-              {locations
-                .filter((l) => l.id !== sourceId)
-                .map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
+            </Field>
+            <Field label={t("Transfer date")} className="max-lg:col-start-1">
+              <DatePicker
+                label={t("Transfer date")}
+                value={date}
+                onChange={setDate}
+              />
+            </Field>
+            <Field label={t("Transfer number")} className="max-lg:col-start-3">
+              <input
+                className={inputStyles}
+                value={liveNumber || t("Assigned on save")}
+                readOnly
+                dir="ltr"
+              />
+            </Field>
+          </div>
+        </Card>
+        <Card className="overflow-visible">
+          <CardHeader index="02" title={t("Transfer items")}>
+            <span className="rounded-md border border-line px-1.5 text-xs text-subtle">
+              {validLines.length}
+            </span>
+          </CardHeader>
+          <div className={table.wrap}>
+            <table className={table.table}>
+              <thead className={table.head}>
+                <tr>
+                  <th className={cx(table.th, "w-12")}>#</th>
+                  <th className={cx(table.th, "w-56")}>
+                    {t("Code / Barcode")}
+                  </th>
+                  <th className={table.th}>{t("Product description")}</th>
+                  <th className={cx(table.th, "w-28")}>{t("Quantity")}</th>
+                  <th className={cx(table.th, "w-36")}>{t("Unit")}</th>
+                  <th
+                    className={cx(table.th, "w-24")}
+                    aria-label={t("Actions")}
+                  />
+                </tr>
+              </thead>
+              <tbody className={table.body}>
+                {lines.map((line, index) => (
+                  <EntryRow
+                    key={line.id}
+                    line={line}
+                    index={index}
+                    update={update}
+                    lookup={lookup}
+                    advance={advance}
+                    remove={remove}
+                  />
                 ))}
-            </Dropdown>
-          </label>
-          <label>
-            {t("Transfer date")}
-            <DatePicker
-              label={t("Transfer date")}
-              value={date}
-              onChange={setDate}
-            />
-          </label>
-          <label>
-            {t("Transfer number")}
-            <input
-              value={liveNumber || t("Assigned on save")}
-              readOnly
-              dir="ltr"
-              className="readonly"
-            />
-          </label>
-        </div>
-      </section>
-      <section className="card items-card">
-        <div className="card-heading">
-          <div>
-            <span className="section-index">02</span>
-            <h2>{t("Transfer items")}</h2>
-            <span className="count">{validLines.length}</span>
+              </tbody>
+            </table>
           </div>
-          <span className="muted small">
-            <ScanLine size={15} />
-            {t("Enter code")} <kbd>Tab ↹</kbd> {t("Identify product")}
-          </span>
-        </div>
-        <div className="table-scroll">
-          <table className="entry-table">
-            <thead>
-              <tr>
-                <th className="row-number">#</th>
-                <th>{t("Code / Barcode")}</th>
-                <th>{t("Product description")}</th>
-                <th>{t("Quantity")}</th>
-                <th>{t("Unit")}</th>
-                <th aria-label={t("Actions")} />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, index) => (
-                <EntryRow
-                  key={line.id}
-                  line={line}
-                  index={index}
-                  update={update}
-                  lookup={lookup}
-                  advance={advance}
-                  remove={remove}
-                />
+          <div className="flex items-center justify-between gap-3 border-t border-line px-2 py-1 md:px-4">
+            <button
+              type="button"
+              className={cx(linkButton, "gap-2 px-2")}
+              onClick={() => {
+                const row = blank();
+                setLines((rows) => [...rows, row]);
+                focus(row.id, "code");
+              }}
+            >
+              <Plus size={18} />
+              {t("Add item")}
+            </button>
+            <span className="hidden items-center gap-1.5 text-xs text-subtle lg:flex">
+              {t("Code / Barcode")}
+              <ArrowRight size={12} className="rtl:-scale-x-100" />
+              {t("Quantity")}
+              <ArrowRight size={12} className="rtl:-scale-x-100" />
+              {t("Unit")}
+              <ArrowRight size={12} className="rtl:-scale-x-100" />
+              {t("Next item")}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-line bg-zinc-50/60 px-4 py-3 text-sm text-subtle md:px-6">
+            <span>
+              {validLines.length} {t("items")}
+            </span>
+            <span className="flex items-center gap-3">
+              {t("Total quantity")}
+              <strong className="text-lg text-ink tabular-nums" dir="ltr">
+                {Number(total).toLocaleString("en", {
+                  maximumFractionDigits: 3,
+                })}
+              </strong>
+            </span>
+          </div>
+        </Card>
+        <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-subtle">
+          <FileCheck2 size={16} className="shrink-0" />
+          {t(
+            "Confirmed documents are permanent. Administrator approval is tracked separately.",
+          )}
+        </p>
+        {drafts.length > 0 && (
+          <details className="rounded-xl border border-line bg-white">
+            <summary className="flex min-h-12 cursor-pointer items-center px-4 text-sm font-semibold">
+              {t("Saved drafts")} ({drafts.length})
+            </summary>
+            <div className="flex flex-col gap-2 px-3 pb-3">
+              {drafts.map((d) => (
+                <span key={d.id} className="flex items-center gap-2">
+                  <Button
+                    className="flex-1 justify-start"
+                    onClick={() => {
+                      setKey(d.id);
+                      setNumber(d.number);
+                      if (own.length !== 1) setSource(d.data.sourceId);
+                      setDestination(d.data.destinationId);
+                      setDate(d.data.date);
+                      setRemarks(d.data.remarks);
+                      setLines(d.data.lines);
+                      setNotice("");
+                    }}
+                  >
+                    {t("Open draft")} · <span dir="ltr">{d.number}</span>
+                  </Button>
+                  <button
+                    type="button"
+                    className={cx(
+                      iconButton,
+                      "hover:bg-red-50 hover:text-red-700",
+                    )}
+                    aria-label={`${t("Delete draft")} · ${d.number}`}
+                    disabled={busy}
+                    onClick={() => setDeleting({ id: d.id, number: d.number })}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </span>
               ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="add-row">
-          <button
-            className="text-button"
-            onClick={() => {
-              const row = blank();
-              setLines((rows) => [...rows, row]);
-              focus(row.id, "code");
-            }}
-          >
-            <Plus size={16} />
-            {t("Add item")}
-          </button>
-          <span className="muted small">
-            {t("Code / Barcode")} <ArrowRight size={12} />
-            {t("Quantity")} <ArrowRight size={12} />
-            {t("Unit")} <ArrowRight size={12} />
-            {t("Next item")}
-          </span>
-        </div>
-        <div className="items-total">
-          <span>
-            {validLines.length} {t("items")}
-          </span>
-          <div>
-            {t("Total quantity")}
-            <strong dir="ltr">
-              {Number(total).toLocaleString("en", { maximumFractionDigits: 3 })}
-            </strong>
-          </div>
-        </div>
-      </section>
-      <section className="remarks-section">
-        <div className="document-note">
-          <FileCheck2 size={20} />
-          <p>
-            {t(
-              "Confirmed documents are permanent. Administrator approval is tracked separately.",
-            )}
-          </p>
-        </div>
-      </section>
-      <div className="confirmation-bar">
-        <span>
-          <ShieldIcon />
+            </div>
+          </details>
+        )}
+      </div>
+      {/* Fixed to the bottom of the screen on phones, inline from md up. */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:mt-5 md:flex md:items-center md:justify-between md:border-0 md:bg-transparent md:p-0 lg:ps-0">
+        <span className="hidden items-center gap-2 text-xs text-subtle md:flex">
+          <FileText size={15} />
           {t("Drafts are saved to the server.")}
         </span>
-        <div>
+        <div className="grid grid-cols-2 gap-2 md:flex">
           {drafts.some((d) => d.id === key) && (
-            <button
-              className="button danger"
+            <Button
+              variant="danger"
+              className="col-span-2"
               disabled={busy}
               onClick={() => setDeleting({ id: key, number })}
             >
               <Trash2 size={16} />
               {t("Delete draft")}
-            </button>
+            </Button>
           )}
-          <button
-            className="button"
+          <Button
             disabled={busy}
             onClick={async () => {
               setBusy(true);
@@ -620,79 +681,42 @@ export function TransferForm({
           >
             <Save size={16} />
             {t("Save draft")}
-          </button>
-          <button
-            className="button primary"
-            disabled={busy}
-            onClick={openReview}
-          >
+          </Button>
+          <Button variant="primary" disabled={busy} onClick={openReview}>
             <Check size={17} />
             {t(busy ? "Please wait…" : "Confirm Transfer")}
-          </button>
+          </Button>
         </div>
       </div>
-      {drafts.length > 0 && (
-        <details className="draft-list">
-          <summary>
-            {t("Saved drafts")} ({drafts.length})
-          </summary>
-          {drafts.map((d) => (
-            <span key={d.id} className="draft-item">
-              <button
-                className="button"
-                onClick={() => {
-                  setKey(d.id);
-                  setNumber(d.number);
-                  if (own.length !== 1) setSource(d.data.sourceId);
-                  setDestination(d.data.destinationId);
-                  setDate(d.data.date);
-                  setRemarks(d.data.remarks);
-                  setLines(d.data.lines);
-                  setNotice("");
-                }}
-              >
-                {t("Open draft")} · {d.number}
-              </button>
-              <button
-                className="icon-button danger"
-                aria-label={`${t("Delete draft")} · ${d.number}`}
-                disabled={busy}
-                onClick={() => setDeleting({ id: d.id, number: d.number })}
-              >
-                <Trash2 size={15} />
-              </button>
-            </span>
-          ))}
-        </details>
-      )}
       {deleting && (
         <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
-          <p className="muted">
+          <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
             {t(
               "This saved draft and all of its items will be removed. Its number will not be reused.",
             )}
           </p>
-          <dl className="review-grid">
-            <dt>{t("Transfer number")}</dt>
-            <dd dir="ltr">{deleting.number}</dd>
+          <dl className={reviewGrid}>
+            <dt className="text-subtle">{t("Transfer number")}</dt>
+            <dd className={reviewValue} dir="ltr">
+              {deleting.number}
+            </dd>
           </dl>
-          <div className="modal-actions">
-            <button
-              className="button"
+          <div className={modalActions}>
+            <Button
               data-initial-focus
               disabled={busy}
               onClick={() => setDeleting(null)}
             >
               {t("Cancel")}
-            </button>
-            <button
-              className="button danger-solid"
+            </Button>
+            <Button
+              variant="dangerSolid"
               disabled={busy}
               onClick={() => deleteDraft(deleting.id)}
             >
               <Trash2 size={16} />
               {t(busy ? "Please wait…" : "Delete draft")}
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -701,35 +725,39 @@ export function TransferForm({
           title="Review transfer"
           onClose={() => !busy && setReview(false)}
         >
-          <p className="muted">{t("Review the document before confirming.")}</p>
-          <dl className="review-grid">
-            <dt>{t("Transfer number")}</dt>
-            <dd dir="ltr">{liveNumber}</dd>
-            <dt>{t("From location")}</dt>
-            <dd>{locations.find((l) => l.id === sourceId)?.name}</dd>
-            <dt>{t("To location")}</dt>
-            <dd>{locations.find((l) => l.id === destinationId)?.name}</dd>
-            <dt>{t("Total item lines")}</dt>
-            <dd>{validLines.length}</dd>
-            <dt>{t("Total quantity")}</dt>
-            <dd>{Number(total)}</dd>
+          <p className="mt-0 mb-4 text-sm text-muted">
+            {t("Review the document before confirming.")}
+          </p>
+          <dl className={reviewGrid}>
+            <dt className="text-subtle">{t("Transfer number")}</dt>
+            <dd className={reviewValue} dir="ltr">
+              {liveNumber}
+            </dd>
+            <dt className="text-subtle">{t("From location")}</dt>
+            <dd className={reviewValue}>
+              {locations.find((l) => l.id === sourceId)?.name}
+            </dd>
+            <dt className="text-subtle">{t("To location")}</dt>
+            <dd className={reviewValue}>
+              {locations.find((l) => l.id === destinationId)?.name}
+            </dd>
+            <dt className="text-subtle">{t("Total item lines")}</dt>
+            <dd className={reviewValue}>{validLines.length}</dd>
+            <dt className="text-subtle">{t("Total quantity")}</dt>
+            <dd className={reviewValue}>{Number(total)}</dd>
           </dl>
-          {error && <div className="error">{t(error)}</div>}
-          <div className="modal-actions">
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => setReview(false)}
-            >
+          {error && (
+            <div className="mt-4">
+              <Notice tone="error">{t(error)}</Notice>
+            </div>
+          )}
+          <div className={modalActions}>
+            <Button disabled={busy} onClick={() => setReview(false)}>
               {t("Cancel")}
-            </button>
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={confirm}
-            >
+            </Button>
+            <Button variant="primary" disabled={busy} onClick={confirm}>
               {t(busy ? "Please wait…" : "Confirm and generate PDF")}
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -741,13 +769,14 @@ export function TransferForm({
             setDuplicate(null);
           }}
         >
-          <p>{duplicate.product.description}</p>
-          <p className="muted">
+          <p className="mt-0 mb-1 font-semibold" dir="auto">
+            {duplicate.product.description}
+          </p>
+          <p className="m-0 text-sm text-muted">
             {t("Resolve this duplicate before continuing.")}
           </p>
-          <div className="modal-actions">
-            <button
-              className="button"
+          <div className={modalActions}>
+            <Button
               onClick={() => {
                 setLines((rows) => rows.filter((l) => l.id !== duplicate.id));
                 focus(duplicate.existingId, "qty");
@@ -755,9 +784,9 @@ export function TransferForm({
               }}
             >
               {t("Update existing quantity")}
-            </button>
-            <button
-              className="button primary"
+            </Button>
+            <Button
+              variant="primary"
               onClick={() => {
                 update(duplicate.id, { duplicateAccepted: true });
                 focus(duplicate.id, "qty");
@@ -765,7 +794,7 @@ export function TransferForm({
               }}
             >
               {t("Keep separate row")}
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -802,17 +831,36 @@ const EntryRow = memo(function EntryRow({
   const [noteOpen, setNoteOpen] = useState(Boolean(line.note));
   return (
     <tr
-      className={line.error ? "invalid-row" : product ? "identified-row" : ""}
+      className={cx(
+        "grid grid-cols-2 gap-x-3 gap-y-2.5 border-b border-line px-4 py-4 last:border-b-0 md:table-row md:p-0",
+        line.error && "bg-red-50/50",
+      )}
     >
-      <td className="row-number">{String(index + 1).padStart(2, "0")}</td>
-      <td>
-        <div className="code-field">
-          <ScanLine size={15} />
+      <td
+        className={cx(
+          table.td,
+          "col-start-1 row-start-1 self-center text-xs text-subtle tabular-nums",
+        )}
+      >
+        {String(index + 1).padStart(2, "0")}
+      </td>
+      <td className={cx(table.td, "col-span-2")}>
+        <div className="relative">
+          <ScanLine
+            size={16}
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-subtle"
+          />
           <input
+            className={cx(
+              inputStyles,
+              "ps-10 pe-9 font-semibold",
+              line.error && "border-red-300",
+            )}
             id={`code-${line.id}`}
             aria-label={`${t("Code / Barcode")} ${index + 1}`}
             dir="ltr"
             autoComplete="off"
+            enterKeyHint="next"
             value={line.code}
             placeholder={t("Scan or enter code")}
             onChange={(e) =>
@@ -831,19 +879,24 @@ const EntryRow = memo(function EntryRow({
               }
             }}
           />
-          {product && <CheckCircle2 size={14} className="success-icon" />}
+          {product && (
+            <CheckCircle2
+              size={16}
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-ok"
+            />
+          )}
         </div>
         {line.error && (
-          <span className="inline-error" role="alert">
+          <span className="mt-1 block text-xs text-red-700" role="alert">
             {t(line.error)}
           </span>
         )}
       </td>
-      <td>
+      <td className={cx(table.td, "col-span-2")}>
         {product && renamable(product.code) ? (
           <input
             id={`description-${line.id}`}
-            className="line-description"
+            className={inputStyles}
             aria-label={`${t("Product description")} ${index + 1}`}
             dir="auto"
             maxLength={2000}
@@ -853,9 +906,10 @@ const EntryRow = memo(function EntryRow({
         ) : (
           <span
             dir="auto"
-            className={
-              product ? "description" : "description empty-description"
-            }
+            className={cx(
+              "block text-sm",
+              product ? "text-ink" : "text-subtle max-md:hidden",
+            )}
           >
             {product?.description ?? t("Description appears automatically")}
           </span>
@@ -863,7 +917,7 @@ const EntryRow = memo(function EntryRow({
         {noteOpen && (
           <input
             id={`note-${line.id}`}
-            className="line-note"
+            className={cx(inputStyles, "mt-2 border-brand/30 bg-brand-soft/40")}
             aria-label={`${t("Item note")} ${index + 1}`}
             dir="auto"
             maxLength={500}
@@ -873,15 +927,22 @@ const EntryRow = memo(function EntryRow({
           />
         )}
       </td>
-      <td data-label={t("Quantity")}>
+      <td className={table.td}>
+        <span className="mb-1.5 block text-xs text-subtle md:hidden">
+          {t("Quantity")}
+        </span>
         <input
           {...quantityField}
           aria-invalid={!!rowForm.formState.errors.quantity}
-          className="quantity-input"
+          className={cx(
+            inputStyles,
+            "text-center font-semibold tabular-nums disabled:bg-zinc-50 aria-invalid:border-red-300",
+          )}
           id={`qty-${line.id}`}
           aria-label={`${t("Quantity")} ${index + 1}`}
           dir="ltr"
           inputMode="decimal"
+          enterKeyHint="next"
           value={line.quantity}
           placeholder="0"
           disabled={!product}
@@ -898,12 +959,15 @@ const EntryRow = memo(function EntryRow({
           }}
         />
         {rowForm.formState.errors.quantity && (
-          <span className="inline-error" role="alert">
+          <span className="mt-1 block text-xs text-red-700" role="alert">
             {rowForm.formState.errors.quantity.message}
           </span>
         )}
       </td>
-      <td data-label={t("Unit")}>
+      <td className={table.td}>
+        <span className="mb-1.5 block text-xs text-subtle md:hidden">
+          {t("Unit")}
+        </span>
         {product?.units.length ? (
           <Dropdown
             id={`unit-${line.id}`}
@@ -923,47 +987,56 @@ const EntryRow = memo(function EntryRow({
             <option value="">{t("No unit")}</option>
           </Dropdown>
         ) : (
-          <span className="unit-empty" title={t("No defined unit")}>
+          <span
+            className="flex min-h-11 items-center justify-center rounded-lg bg-zinc-50 text-subtle md:min-h-10 md:bg-transparent"
+            title={t("No defined unit")}
+          >
             —
           </span>
         )}
       </td>
-      <td className="line-actions">
-        <button
-          className={noteOpen ? "icon-button active" : "icon-button"}
-          tabIndex={-1}
-          aria-label={`${t("Item note")} ${index + 1}`}
-          aria-pressed={noteOpen}
-          title={t("Add a note")}
-          onClick={() => {
-            if (noteOpen && !line.note?.trim()) {
-              update(line.id, { note: undefined });
-              setNoteOpen(false);
-              return;
-            }
-            setNoteOpen(true);
-            requestAnimationFrame(() =>
-              document.getElementById(`note-${line.id}`)?.focus(),
-            );
-          }}
-        >
-          <Plus size={15} />
-        </button>
-        <button
-          className="icon-button"
-          tabIndex={-1}
-          aria-label={`${t("Remove item")} ${index + 1}`}
-          onClick={() => remove(line.id)}
-        >
-          <Trash2 size={15} />
-        </button>
+      <td
+        className={cx(
+          table.td,
+          "col-start-2 row-start-1 -my-2 flex justify-end md:my-0 md:table-cell",
+        )}
+      >
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            className={noteOpen ? iconButtonActive : iconButton}
+            tabIndex={-1}
+            aria-label={`${t("Item note")} ${index + 1}`}
+            aria-pressed={noteOpen}
+            title={t("Add a note")}
+            onClick={() => {
+              if (noteOpen && !line.note?.trim()) {
+                update(line.id, { note: undefined });
+                setNoteOpen(false);
+                return;
+              }
+              setNoteOpen(true);
+              requestAnimationFrame(() =>
+                document.getElementById(`note-${line.id}`)?.focus(),
+              );
+            }}
+          >
+            <MessageSquarePlus size={17} />
+          </button>
+          <button
+            type="button"
+            className={cx(iconButton, "hover:bg-red-50 hover:text-red-700")}
+            tabIndex={-1}
+            aria-label={`${t("Remove item")} ${index + 1}`}
+            onClick={() => remove(line.id)}
+          >
+            <Trash2 size={17} />
+          </button>
+        </div>
       </td>
     </tr>
   );
 });
-function ShieldIcon() {
-  return <FileText size={15} />;
-}
 function canSharePdf(file: File) {
   try {
     return !!navigator.share && !!navigator.canShare?.({ files: [file] });
@@ -1028,68 +1101,73 @@ export function SuccessActions({
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
   return (
-    <section className="success-panel card">
-      <div className="success-mark">
-        <Check size={31} />
+    <Card className="flex flex-col items-center px-5 py-10 text-center md:py-14">
+      <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-emerald-50 text-ok">
+        <Check size={30} />
       </div>
-      <span className="eyebrow">{t("Confirmed")}</span>
-      <h2>{t("Transfer Confirmed Successfully")}</h2>
-      <p>
-        {t("Transfer No")}: <strong dir="ltr">{transfer.number}</strong>
+      <span className="text-[11px] font-bold tracking-[0.18em] text-ok uppercase">
+        {t("Confirmed")}
+      </span>
+      <h2 className="mt-2 mb-1 text-xl font-semibold md:text-2xl">
+        {t("Transfer Confirmed Successfully")}
+      </h2>
+      <p className="mt-0 mb-6 text-sm text-muted">
+        {t("Transfer No")}:{" "}
+        <strong className="text-ink" dir="ltr">
+          {transfer.number}
+        </strong>
       </p>
-      <div className="success-actions">
-        <button
-          className="button primary"
+      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+        <Button
+          variant="primary"
           disabled={!file || busy}
           onClick={() => file && downloadBlob(file, file.name)}
         >
           <Download size={18} />
           {t("Download PDF")}
-        </button>
-        <button
-          className="button whatsapp"
-          disabled={!file || busy}
-          onClick={share}
-        >
+        </Button>
+        <Button variant="whatsapp" disabled={!file || busy} onClick={share}>
           <Share2 size={18} />
           {t("Share via WhatsApp")}
-        </button>
+        </Button>
       </div>
-      {busy && <p role="status">{t("Preparing PDF…")}</p>}
+      {busy && (
+        <p className="mt-3 mb-0 text-sm text-muted" role="status">
+          {t("Preparing PDF…")}
+        </p>
+      )}
       {error && (
-        <div className="error" role="alert">
-          {t(error)}{" "}
-          <button className="button" onClick={prepare}>
-            {t("Retry PDF")}
-          </button>
+        <div className="mt-4 flex w-full max-w-md flex-col items-center gap-2">
+          <Notice tone="error">{t(error)}</Notice>
+          <Button onClick={prepare}>{t("Retry PDF")}</Button>
         </div>
       )}
       {message && (
-        <p className="notice" role="status">
-          {t(message)}
-        </p>
+        <div className="mt-4 w-full max-w-md">
+          <Notice>{t(message)}</Notice>
+        </div>
       )}
       {fallback && (
         <a
-          className="button whatsapp"
+          className={cx(buttonStyles.whatsapp, "mt-3")}
           href={whatsappUrl}
           target="_blank"
           rel="noopener noreferrer"
         >
           {t("Open WhatsApp")}
-          <ArrowRight size={16} />
+          <ArrowRight size={16} className="rtl:-scale-x-100" />
         </a>
       )}
-      <p className="share-explanation">
+      <p className="mt-3 mb-0 text-xs text-subtle">
         {t(
           file && canSharePdf(file)
             ? "Choose WhatsApp from your device’s share menu."
             : "Download first, then open WhatsApp and attach the PDF.",
         )}
       </p>
-      <div className="success-secondary">
+      <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-1">
         <a
-          className="text-button"
+          className={cx(linkButton, "gap-1.5")}
           href={`${url}?inline=1`}
           target="_blank"
           rel="noopener noreferrer"
@@ -1098,16 +1176,20 @@ export function SuccessActions({
           {t("Preview / Print")}
         </a>
         {onAnother ? (
-          <button className="text-button" onClick={onAnother}>
+          <button
+            type="button"
+            className={cx(linkButton, "gap-1.5")}
+            onClick={onAnother}
+          >
             <Plus size={15} />
             {t("Create another transfer")}
           </button>
         ) : (
-          <Link className="text-button" href="/new-transfer">
+          <Link className={linkButton} href="/new-transfer">
             {t("Create another transfer")}
           </Link>
         )}
       </div>
-    </section>
+    </Card>
   );
 }

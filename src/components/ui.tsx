@@ -17,6 +17,7 @@ export const buttonStyles = {
   secondary: `${buttonBase} border border-line bg-white text-ink hover:bg-zinc-50`,
   danger: `${buttonBase} border border-red-200 bg-white text-red-700 hover:bg-red-50`,
   dangerSolid: `${buttonBase} border-transparent bg-red-600 text-white hover:bg-red-700`,
+  whatsapp: `${buttonBase} border-transparent bg-[#1f8a5b] text-white hover:bg-[#19744c]`,
   ghost: `${buttonBase} border-transparent bg-transparent px-2 text-brand hover:bg-brand-soft`,
 };
 export function Button({
@@ -35,8 +36,10 @@ export function Button({
     />
   );
 }
-export const iconButton =
-  "inline-flex size-11 items-center justify-center rounded-lg border-0 bg-transparent text-muted transition-colors hover:bg-brand-soft hover:text-brand md:size-9";
+const iconButtonBase =
+  "inline-flex size-11 items-center justify-center rounded-lg border-0 transition-colors hover:bg-brand-soft hover:text-brand md:size-9";
+export const iconButton = `${iconButtonBase} bg-transparent text-muted`;
+export const iconButtonActive = `${iconButtonBase} bg-brand-soft text-brand`;
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLElement>) {
   return (
@@ -83,7 +86,7 @@ export function Field({
   return (
     <label
       className={cx(
-        "m-0 flex flex-col gap-1.5 text-sm font-medium text-muted",
+        "m-0 flex min-w-0 flex-col gap-1.5 text-sm font-medium text-muted",
         className,
       )}
       {...props}

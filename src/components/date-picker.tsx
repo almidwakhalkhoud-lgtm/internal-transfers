@@ -3,6 +3,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Modal } from "./modal";
+import { cx, iconButton, linkButton } from "./ui";
 import { Dropdown } from "./dropdown";
 import { useBuzz } from "./shell";
 
@@ -47,10 +48,10 @@ export function DatePicker({
     { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" },
   );
   return (
-    <div className="date-picker">
+    <div className="date-picker w-full min-w-0">
       <button
         type="button"
-        className="date-trigger"
+        className="date-trigger flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-line bg-white px-3 text-start text-base text-ink md:min-h-10 md:text-sm"
         ref={trigger}
         aria-label={label}
         aria-haspopup="dialog"
@@ -62,8 +63,10 @@ export function DatePicker({
           setOpen(true);
         }}
       >
-        <span>{value ? formatter.format(parse(value)) : label}</span>
-        <CalendarDays size={17} />
+        <span className={cx("truncate", !value && "text-subtle")}>
+          {value ? formatter.format(parse(value)) : label}
+        </span>
+        <CalendarDays size={17} className="shrink-0 text-subtle" />
       </button>
       {open &&
         createPortal(
@@ -160,7 +163,7 @@ function Calendar({
       <div className="calendar-heading">
         <button
           type="button"
-          className="icon-button"
+          className={iconButton}
           aria-label={t("Previous month")}
           onClick={() => setFocused(iso(moveMonth(date, -1)))}
         >
@@ -198,7 +201,7 @@ function Calendar({
         </Dropdown>
         <button
           type="button"
-          className="icon-button"
+          className={iconButton}
           aria-label={t("Next month")}
           onClick={() => setFocused(iso(moveMonth(date, 1)))}
         >
@@ -262,7 +265,7 @@ function Calendar({
       <div className="calendar-footer">
         <button
           type="button"
-          className="text-button"
+          className={linkButton}
           onClick={() => onChoose(today)}
         >
           {t("Today")}
@@ -270,7 +273,7 @@ function Calendar({
         {clearable && (
           <button
             type="button"
-            className="text-button"
+            className={linkButton}
             onClick={() => onChoose("")}
           >
             {t("Clear date")}
