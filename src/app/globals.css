@@ -1,3 +1,23 @@
+/* Tailwind theme and utilities. Preflight (Tailwind's reset) stays off until
+   every page has moved off the hand-written rules below. */
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../";
+
+@theme {
+  --font-sans: "Yekan Bakh", Arial, sans-serif;
+  --color-brand: #a32688;
+  --color-brand-dark: #872071;
+  --color-brand-soft: #f8eff6;
+  --color-ink: #252327;
+  --color-muted: #595362;
+  --color-subtle: #74667c;
+  --color-line: #e8e7ec;
+  --color-page: #f8f9fb;
+  --color-ok: #278064;
+}
+
 @font-face {
   font-family: Yekan Bakh;
   src: url("/fonts/YekanBakh-Regular.woff2") format("woff2");
@@ -10,6 +30,9 @@
   font-weight: 600 900;
   font-display: swap;
 }
+/* The hand-written styles from before Tailwind. They sit in a lower layer so
+   any Tailwind class wins over them; delete rules as pages move over. */
+@layer legacy {
 :root {
   --accent: #a32688;
   --accent-dark: #872071;
@@ -2904,4 +2927,5 @@ textarea::placeholder {
   display: flex;
   gap: 9px;
   flex-wrap: wrap;
+}
 }

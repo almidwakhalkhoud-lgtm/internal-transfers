@@ -8,6 +8,7 @@ import { useState, useEffect, useSyncExternalStore } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
+import { Button, Card, CardHeader, Field, Notice, inputStyles } from "./ui";
 import { useLoad, LoadError, Empty, Pagination } from "./data-pages";
 import { Modal } from "./transfer-form";
 export function LocationsPage() {
@@ -538,32 +539,29 @@ function Notifications() {
     }
   }
   return (
-    <section className="card settings-card">
-      <div className="card-heading">
-        <h2>{t("Transfer notifications")}</h2>
-      </div>
-      <div className="settings-body">
-        <p className="muted">
+    <Card className="max-w-2xl">
+      <CardHeader title={t("Transfer notifications")} />
+      <div className="flex flex-col items-start gap-4 p-4 md:p-6">
+        <p className="m-0 text-sm leading-relaxed text-muted">
           {t(
             "Get a notification on this device whenever anyone confirms a transfer.",
           )}
         </p>
         {supported === null ? null : !supported ? (
-          <p className="error">
+          <Notice tone="error">
             {t(
               "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
             )}
-          </p>
+          </Notice>
         ) : server && !server.publicKey ? (
-          <p className="error">
+          <Notice tone="error">
             {t("Notifications are not configured on the server yet.")}
-          </p>
+          </Notice>
         ) : (
-          <div className="push-actions">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             {subscription ? (
               <>
-                <button
-                  className="button"
+                <Button
                   disabled={busy}
                   onClick={() =>
                     run(async () => {
@@ -573,9 +571,9 @@ function Notifications() {
                   }
                 >
                   {t("Send a test")}
-                </button>
-                <button
-                  className="button danger"
+                </Button>
+                <Button
+                  variant="danger"
                   disabled={busy}
                   onClick={() =>
                     run(async () => {
@@ -589,11 +587,11 @@ function Notifications() {
                   }
                 >
                   {t("Turn off on this device")}
-                </button>
+                </Button>
               </>
             ) : (
-              <button
-                className="button primary"
+              <Button
+                variant="primary"
                 disabled={busy || !server}
                 onClick={() =>
                   run(async () => {
@@ -613,24 +611,20 @@ function Notifications() {
                 }
               >
                 {t("Turn on for this device")}
-              </button>
+              </Button>
             )}
           </div>
         )}
         {server && server.publicKey && (
-          <p>
+          <p className="m-0 text-sm text-muted">
             {t("Devices receiving notifications")}:{" "}
-            <strong>{server.devices}</strong>
+            <strong className="text-ink">{server.devices}</strong>
           </p>
         )}
-        {message && <p className="notice">{t(message)}</p>}
-        {err && (
-          <p className="error" role="alert">
-            {t(err)}
-          </p>
-        )}
+        {message && <Notice>{t(message)}</Notice>}
+        {err && <Notice tone="error">{t(err)}</Notice>}
       </div>
-    </section>
+    </Card>
   );
 }
 export function SettingsPage() {
@@ -643,57 +637,61 @@ export function SettingsPage() {
       <PageTitle eyebrow="Administration" title="Settings" />
       <LoadError error={error || err} load={load} />
       {!data && !error && <Skeleton rows={3} />}
-      <Notifications />
-      <section className="card settings-card">
-        <div className="card-heading">
-          <h2>{t("Numbering sequence")}</h2>
-        </div>
-        {data && (
-          <Form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await api(
-                  "settings",
-                  {
-                    nextValue: Number(
-                      new FormData(e.currentTarget).get("nextValue"),
-                    ),
-                  },
-                  "PATCH",
-                );
-                setMessage("Changes saved");
-                load();
-              } catch (e) {
-                setErr((e as Error).message);
-              }
-            }}
-          >
-            <p className="muted">
-              {t(
-                "Numbers are the first letters of the source and destination and one shared counter, e.g. MA-0001.",
-              )}
-            </p>
-            <p>
-              {t("Last reserved number")}: <strong>{data.value}</strong>
-            </p>
-            <label>
-              {t("Next transfer number")}
-              <input
-                type="number"
-                name="nextValue"
-                min={1}
-                max={2147483647}
-                defaultValue={data.value + 1}
-                required
-                dir="ltr"
-              />
-            </label>
-            <button className="button primary">{t("Save changes")}</button>
-            {message && <p className="notice">{t(message)}</p>}
-          </Form>
-        )}
-      </section>
+      <div className="flex flex-col gap-4 md:gap-5">
+        <Notifications />
+        <Card className="max-w-2xl">
+          <CardHeader title={t("Numbering sequence")} />
+          {data && (
+            <Form
+              className="flex flex-col gap-4 p-4 md:p-6"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await api(
+                    "settings",
+                    {
+                      nextValue: Number(
+                        new FormData(e.currentTarget).get("nextValue"),
+                      ),
+                    },
+                    "PATCH",
+                  );
+                  setMessage("Changes saved");
+                  load();
+                } catch (e) {
+                  setErr((e as Error).message);
+                }
+              }}
+            >
+              <p className="m-0 text-sm leading-relaxed text-muted">
+                {t(
+                  "Numbers are the first letters of the source and destination and one shared counter, e.g. MA-0001.",
+                )}
+              </p>
+              <p className="m-0 text-sm text-muted">
+                {t("Last reserved number")}:{" "}
+                <strong className="text-ink">{data.value}</strong>
+              </p>
+              <Field label={t("Next transfer number")} className="sm:max-w-xs">
+                <input
+                  className={inputStyles}
+                  type="number"
+                  name="nextValue"
+                  min={1}
+                  max={2147483647}
+                  defaultValue={data.value + 1}
+                  required
+                  dir="ltr"
+                />
+              </Field>
+              <Button type="submit" variant="primary" className="sm:self-start">
+                {t("Save changes")}
+              </Button>
+              {message && <Notice>{t(message)}</Notice>}
+            </Form>
+          )}
+        </Card>
+      </div>
     </>
   );
 }

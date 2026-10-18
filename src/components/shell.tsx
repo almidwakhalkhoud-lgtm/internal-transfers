@@ -22,12 +22,12 @@ import {
   Plus,
   Globe,
   ShieldCheck,
-  PanelLeftClose,
   Menu,
 } from "lucide-react";
 import { translate, type Locale } from "@/lib/i18n";
 import { api } from "@/lib/client";
 import { hasMenu } from "@/lib/permissions";
+import { buttonStyles, cx, iconButton } from "./ui";
 export type Viewer = {
   menus: string[];
   id: string;
@@ -95,13 +95,26 @@ export function Shell({
     ["Settings", "/settings", Settings],
     ["Audit log", "/audit", ShieldCheck],
   ] as const;
+  const navLink = (url: string) =>
+    cx(
+      "relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+      path === url
+        ? "bg-brand-soft font-semibold text-brand before:absolute before:-start-4 before:h-4 before:w-[3px] before:rounded-e before:bg-brand"
+        : "text-muted hover:bg-zinc-50 hover:text-ink",
+    );
+  const sectionLabel =
+    "mb-2 px-3 text-[11px] font-medium tracking-widest text-subtle uppercase";
   return (
     <Context.Provider value={{ user, locale, t }}>
-      <div className="app" dir={locale === "fa" ? "rtl" : "ltr"} lang={locale}>
+      <div
+        className="min-h-dvh bg-page font-sans text-ink"
+        dir={locale === "fa" ? "rtl" : "ltr"}
+        lang={locale}
+      >
         {open && (
           <button
             type="button"
-            className="sidebar-scrim"
+            className="fixed inset-0 z-30 border-0 bg-zinc-900/30 lg:hidden"
             aria-label={t("Close menu")}
             onClick={() => setOpen(false)}
           />
@@ -109,44 +122,60 @@ export function Shell({
         <aside
           id="workspace-navigation"
           ref={sidebar}
-          className={open ? "sidebar open" : "sidebar"}
+          className={cx(
+            "fixed inset-y-0 start-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-e border-line bg-white px-4 pt-6 transition-transform duration-200 lg:w-60",
+            open
+              ? "translate-x-0 shadow-xl"
+              : "max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
+          )}
         >
-          <Link className="brand" href="/dashboard">
+          <Link
+            className="mb-8 flex flex-col items-start px-3"
+            href="/dashboard"
+            onClick={() => setOpen(false)}
+          >
             <Image
               src="/logo.jpeg"
               width={116}
               height={68}
               alt="BUZZ"
               priority
+              className="h-11 w-32 object-cover mix-blend-multiply"
             />
-            <span>INTERNAL TRANSFERS</span>
+            <span className="mt-1.5 text-[10px] tracking-[0.2em] text-subtle">
+              INTERNAL TRANSFERS
+            </span>
           </Link>
-          <div className="nav-label">{t("Workspace")}</div>
-          <nav>
+          <div className={sectionLabel}>{t("Workspace")}</div>
+          <nav className="flex flex-col gap-1">
             {nav
               .filter(([, url]) => hasMenu(user, url.slice(1)))
               .map(([label, url, Icon]) => (
                 <Link
                   key={url}
                   onClick={() => setOpen(false)}
-                  className={path === url ? "nav-item selected" : "nav-item"}
+                  className={navLink(url)}
                   href={url}
                 >
                   <Icon size={18} />
                   {t(label)}
-                  {label === "New transfer" && <kbd>＋</kbd>}
+                  {label === "New transfer" && (
+                    <Plus size={15} className="ms-auto text-subtle" />
+                  )}
                 </Link>
               ))}
           </nav>
           {user.role === "ADMIN" && (
             <>
-              <div className="nav-label admin-label">{t("Administration")}</div>
-              <nav>
+              <div className={cx(sectionLabel, "mt-7")}>
+                {t("Administration")}
+              </div>
+              <nav className="flex flex-col gap-1">
                 {admin.map(([label, url, Icon]) => (
                   <Link
                     key={url}
                     onClick={() => setOpen(false)}
-                    className={path === url ? "nav-item selected" : "nav-item"}
+                    className={navLink(url)}
                     href={url}
                   >
                     <Icon size={18} />
@@ -156,23 +185,25 @@ export function Shell({
               </nav>
             </>
           )}
-          <div className="sidebar-bottom">
-            <div className="secure-note">
+          <div className="mt-auto pt-6">
+            <div className="mx-3 mb-4 flex items-center gap-2 text-xs leading-relaxed text-subtle">
               <ShieldCheck size={16} />
               {t("Access is checked on the server.")}
             </div>
-            <div className="profile">
-              <span className="avatar">
+            <div className="-mx-4 flex items-center gap-3 border-t border-line px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
                 {user.name.slice(0, 2).toUpperCase()}
               </span>
-              <div>
-                <strong>{user.name}</strong>
-                <small>
+              <div className="min-w-0">
+                <strong className="block truncate text-sm font-semibold">
+                  {user.name}
+                </strong>
+                <small className="block text-xs text-subtle">
                   {t(user.role === "ADMIN" ? "Administrator" : "Staff")}
                 </small>
               </div>
               <button
-                className="icon-button"
+                className={cx(iconButton, "ms-auto")}
                 aria-label={t("Sign out")}
                 onClick={async () => {
                   await api("logout", {});
@@ -180,29 +211,27 @@ export function Shell({
                   router.refresh();
                 }}
               >
-                <LogOut size={17} />
+                <LogOut size={18} className="rtl:-scale-x-100" />
               </button>
             </div>
           </div>
         </aside>
-        <div className="main-shell">
-          <header className="topbar">
-            <div className="breadcrumb">
+        <div className="flex min-h-dvh min-w-0 flex-col lg:ps-60">
+          <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-white/90 px-2 backdrop-blur md:h-16 md:px-8">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-subtle md:gap-3">
               <button
-                className="icon-button mobile-menu"
+                className={cx(iconButton, "lg:hidden")}
                 ref={menuButton}
                 aria-label="Menu"
                 aria-expanded={open}
                 aria-controls="workspace-navigation"
                 onClick={() => setOpen(!open)}
               >
-                <Menu size={20} />
+                <Menu size={22} />
               </button>
-              <PanelLeftClose size={17} />
-              <span className="divider" />
-              {t("Workspace")}
-              <span className="slash">/</span>
-              <strong>
+              <span className="hidden md:inline">{t("Workspace")}</span>
+              <span className="hidden text-zinc-300 md:inline">/</span>
+              <strong className="truncate font-semibold text-ink">
                 {t(
                   [...nav, ...admin].find(([, url]) =>
                     path.startsWith(url),
@@ -210,27 +239,32 @@ export function Shell({
                 )}
               </strong>
             </div>
-            <div className="topbar-actions">
-              <span className="company">MEHDI ALI TRADING Co.</span>
+            <div className="flex items-center gap-5 pe-2 md:pe-0">
+              <span dir="ltr" className="hidden text-xs tracking-wide text-subtle md:inline">
+                MEHDI ALI TRADING Co.
+              </span>
               <button
-                className="language"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm text-muted hover:bg-zinc-50"
                 onClick={async () => {
                   const value = locale === "en" ? "fa" : "en";
                   await api("me", { locale: value }, "PATCH");
                   setLocale(value);
                 }}
               >
-                <Globe size={15} />
+                <Globe size={16} />
                 {locale === "en" ? "فارسی" : "English"}
               </button>
             </div>
           </header>
-          <main>{children}</main>
-          <footer className="app-footer">
+          <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 pt-5 pb-8 md:px-8 md:pt-8">
+            {children}
+          </main>
+          <footer className="flex items-center justify-between gap-3 border-t border-line px-4 py-4 text-xs text-subtle md:px-8">
             <span>
-              BUZZ <span className="muted">/ {t("Internal transfers")}</span>
+              <b className="font-semibold text-muted">BUZZ</b> /{" "}
+              {t("Internal transfers")}
             </span>
-            <span className="footer-dot" /> MEHDI ALI TRADING Co.
+            <span dir="ltr">MEHDI ALI TRADING Co.</span>
           </footer>
         </div>
       </div>
@@ -250,11 +284,21 @@ export function PageTitle({
 }) {
   const { t } = useBuzz();
   return (
-    <div className="page-heading">
-      <div>
-        {eyebrow && <div className="eyebrow">{t(eyebrow)}</div>}
-        <h1>{t(title)}</h1>
-        {subtitle && <p>{t(subtitle)}</p>}
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-4 md:mb-7">
+      <div className="min-w-0">
+        {eyebrow && (
+          <div className="mb-2 text-[11px] font-bold tracking-[0.18em] text-brand uppercase">
+            {t(eyebrow)}
+          </div>
+        )}
+        <h1 className="m-0 text-2xl font-semibold tracking-tight text-ink md:text-3xl">
+          {t(title)}
+        </h1>
+        {subtitle && (
+          <p className="mt-1.5 mb-0 text-sm leading-relaxed text-muted">
+            {t(subtitle)}
+          </p>
+        )}
       </div>
       {action}
     </div>
@@ -264,17 +308,29 @@ export function NewTransferLink() {
   const { t, user } = useBuzz();
   if (!hasMenu(user, "new-transfer")) return null;
   return (
-    <Link className="button primary" href="/new-transfer">
+    <Link className={buttonStyles.primary} href="/new-transfer">
       <Plus size={17} />
       {t("New transfer")}
     </Link>
   );
 }
+const statusTone: Record<string, string> = {
+  PENDING: "border-amber-100 bg-amber-50 text-amber-800",
+  APPROVED: "border-emerald-100 bg-emerald-50 text-emerald-700",
+  RECEIVED: "border-emerald-100 bg-emerald-50 text-emerald-700",
+  CONFIRMED: "border-emerald-100 bg-emerald-50 text-emerald-700",
+  REJECTED: "border-red-100 bg-red-50 text-red-700",
+};
 export function Status({ value }: { value: string }) {
   const { t } = useBuzz();
   return (
-    <span className={`badge ${value.toLowerCase()}`}>
-      <span />
+    <span
+      className={cx(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs whitespace-nowrap",
+        statusTone[value] ?? "border-line bg-zinc-50 text-muted",
+      )}
+    >
+      <span className="size-1 rounded-full bg-current" />
       {t(value[0] + value.slice(1).toLowerCase())}
     </span>
   );
