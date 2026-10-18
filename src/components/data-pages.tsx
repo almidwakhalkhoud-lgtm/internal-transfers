@@ -776,12 +776,19 @@ function ProductForm({
   const [outer, setOuter] = useState<string>(
     product?.units[0]?.replace(/\(.*/, "") ?? "CTN",
   );
-  const [units, setUnits] = useState(product?.units.join("|") ?? "");
+  const [units, setUnits] = useState<string[]>(product?.units ?? []);
+  const [adding, setAdding] = useState("");
   // A new product follows its name until the admin types units themselves.
   const [unitsTouched, setUnitsTouched] = useState(Boolean(product));
   const [err, setErr] = useState("");
   const detect = (name: string, outerUnit: string) =>
-    setUnits(unitsFromDescription(name, outerUnit).join("|"));
+    setUnits(unitsFromDescription(name, outerUnit));
+  const add = (unit: string) => {
+    const value = unit.trim();
+    if (value && !units.includes(value)) setUnits([...units, value]);
+    setUnitsTouched(true);
+    setAdding("");
+  };
   const split = (value: FormDataEntryValue | null) =>
     String(value ?? "")
       .split("|")
@@ -798,7 +805,7 @@ function ProductForm({
           const f = new FormData(e.currentTarget);
           const body = {
             description,
-            units: split(units),
+            units,
             barcodes: split(f.get("barcodes")),
           };
           try {
@@ -850,25 +857,86 @@ function ProductForm({
             ))}
           </select>
         </label>
-        <label>
-          {t("Units")}
-          <input
-            name="units"
-            value={units}
-            onChange={(e) => {
-              setUnits(e.target.value);
-              setUnitsTouched(true);
-            }}
-            dir="ltr"
-          />
-        </label>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => detect(description, outer)}
-        >
-          {t("Detect units from description")}
-        </button>
+        <fieldset className="unit-picker">
+          <legend>{t("Units")}</legend>
+          <div className="unit-chips" dir="ltr">
+            {units.length ? (
+              units.map((u) => (
+                <span key={u} className="unit-chip">
+                  {u}
+                  <button
+                    type="button"
+                    aria-label={`${t("Remove")} ${u}`}
+                    onClick={() => {
+                      setUnits(units.filter((x) => x !== u));
+                      setUnitsTouched(true);
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span className="muted">{t("No unit")}</span>
+            )}
+          </div>
+          <div className="unit-add">
+            <input
+              value={adding}
+              placeholder="CTN(1x20)"
+              aria-label={t("Add unit")}
+              dir="ltr"
+              onChange={(e) => setAdding(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  add(adding);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="button"
+              disabled={!adding.trim()}
+              onClick={() => add(adding)}
+            >
+              {t("Add unit")}
+            </button>
+          </div>
+          <div className="unit-quick">
+            {["PCS", "CTN", "BOX", "DOZEN", "SET", "PKTS"].map((u) => (
+              <button
+                key={u}
+                type="button"
+                className="text-button"
+                disabled={units.includes(u)}
+                onClick={() => add(u)}
+              >
+                + {u}
+              </button>
+            ))}
+          </div>
+          <div className="unit-actions">
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => detect(description, outer)}
+            >
+              {t("Detect units from description")}
+            </button>
+            <button
+              type="button"
+              className="text-button danger"
+              disabled={!units.length}
+              onClick={() => {
+                setUnits([]);
+                setUnitsTouched(true);
+              }}
+            >
+              {t("No unit")}
+            </button>
+          </div>
+        </fieldset>
         <p className="muted">
           {t(
             "(1xN) gives the outer unit and PCS; (1xNxM) gives CTN, BOX and PCS. No pack size, no units.",

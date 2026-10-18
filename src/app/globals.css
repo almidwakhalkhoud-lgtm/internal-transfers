@@ -2760,3 +2760,58 @@ textarea::placeholder {
 .audit-warning td {
   background: #fff6f4;
 }
+.unit-picker {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 10px;
+}
+.unit-picker legend {
+  padding: 0 4px;
+}
+.unit-chips,
+.unit-quick,
+.unit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+.unit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  background: #f4f1f5;
+  color: var(--accent);
+  font-weight: 600;
+}
+.unit-chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.unit-add {
+  display: flex;
+  gap: 8px;
+}
+.unit-add input {
+  flex: 1;
+  min-width: 0;
+}
+.unit-actions {
+  justify-content: space-between;
+}
+.text-button.danger {
+  color: #b42318;
+}
+.text-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
