@@ -4,7 +4,12 @@ import { db } from "./db";
 
 // Web Push needs a key pair (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY). Without
 // it notifications are simply off; nothing else in the app depends on them.
-export const pushPublicKey = () => process.env.VAPID_PUBLIC_KEY ?? "";
+export const pushPublicKey = () => process.env.VAPID_PUBLIC_KEY?.trim() ?? "";
+// Names (never values) of the key variables this deployment cannot see.
+export const missingPushKeys = () =>
+  ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"].filter(
+    (name) => !process.env[name]?.trim(),
+  );
 function configured() {
   const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();

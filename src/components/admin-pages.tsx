@@ -554,6 +554,7 @@ function Notifications() {
   );
   const [server, setServer] = useState<{
     publicKey: string;
+    missing?: string[];
     devices: number;
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -598,9 +599,11 @@ function Notifications() {
               "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
             )}
           </Notice>
-        ) : server && !server.publicKey ? (
+        ) : server && server.missing?.length ? (
           <Notice tone="error">
-            {t("Notifications are not configured on the server yet.")}
+            {t("Notifications are not configured on the server yet.")}{" "}
+            {t("Missing on this deployment")}:{" "}
+            <b dir="ltr">{server.missing.join(", ")}</b>
           </Notice>
         ) : (
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">

@@ -25,7 +25,7 @@ import {
   type CatalogRow,
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
-import { pushPublicKey, sendPush } from "@/lib/push";
+import { missingPushKeys, pushPublicKey, sendPush } from "@/lib/push";
 import { readFile, unlink } from "node:fs/promises";
 import { hasMenu, menus, landingPage } from "@/lib/permissions";
 import {
@@ -597,6 +597,7 @@ async function handle(
     if (path === "push" && method === "GET")
       return NextResponse.json({
         publicKey: pushPublicKey(),
+        missing: missingPushKeys(),
         devices: await db.pushSubscription.count({
           where: { userId: user.id },
         }),

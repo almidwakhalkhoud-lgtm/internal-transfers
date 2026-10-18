@@ -352,6 +352,7 @@ export const fa: Record<string, string> = {
   "Notifications are not configured on the server yet.":
     "اعلان‌ها هنوز روی سرور تنظیم نشده‌اند.",
   "Send a test": "ارسال اعلان آزمایشی",
+  "Missing on this deployment": "در این دیپلوی پیدا نشد",
   "Test notification sent": "اعلان آزمایشی ارسال شد",
   "This account has no device with notifications on.":
     "هیچ دستگاهی با اعلان روشن برای این حساب ثبت نشده است.",
