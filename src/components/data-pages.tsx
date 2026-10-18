@@ -23,7 +23,20 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
-import { buttonStyles } from "./ui";
+import {
+  Button,
+  Card,
+  Field,
+  Notice,
+  CardHeader,
+  CellLabel,
+  buttonStyles,
+  cx,
+  iconButton,
+  inputStyles,
+  linkButton,
+  table,
+} from "./ui";
 import { SuccessActions, Modal, type Product } from "./transfer-form";
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
 import {
@@ -88,10 +101,18 @@ export function LoadError({
 }
 export function TransferTable({ items }: { items: Summary[] }) {
   const { t, locale } = useBuzz();
+  const date = (value: string) =>
+    new Date(value).toLocaleDateString(locale === "fa" ? "fa-IR" : "en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Dubai",
+    });
+  if (!items.length) return <Empty title="No transfers yet" />;
   return (
-    <div className="table-scroll">
-      <table className="data-table">
-        <thead>
+    <div className={table.wrap}>
+      <table className={table.table}>
+        <thead className={table.head}>
           <tr>
             {[
               "Transfer number",
@@ -100,66 +121,81 @@ export function TransferTable({ items }: { items: Summary[] }) {
               "Total quantity",
               "Approval",
               "Created by",
-              "Actions",
+              "",
             ].map((h) => (
-              <th key={h}>{t(h)}</th>
+              <th key={h} className={table.th}>
+                {h && t(h)}
+              </th>
             ))}
           </tr>
         </thead>
-        <tbody>
-          {items.length ? (
-            items.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <Link
-                    className="reference-link"
-                    href={`/transfers/${row.id}`}
-                  >
-                    <FileText size={15} />
-                    {row.number}
-                  </Link>
-                </td>
-                <td className="muted">
-                  {new Date(row.date).toLocaleDateString(
-                    locale === "fa" ? "fa-IR" : "en-GB",
-                    {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                      timeZone: "Asia/Dubai",
-                    },
-                  )}
-                </td>
-                <td>
-                  <span className="table-route">
-                    {row.source}
-                    <ArrowRight size={13} />
-                    {row.destination}
-                  </span>
-                </td>
-                <td dir="ltr">{Number(row.total).toLocaleString()}</td>
-                <td>
-                  <Status value={row.approval} />
-                </td>
-                <td>{row.creator.name}</td>
-                <td>
-                  <Link
-                    className="icon-button"
-                    aria-label={t("View transfer")}
-                    href={`/transfers/${row.id}`}
-                  >
-                    <ArrowUpRight size={16} />
-                  </Link>
-                </td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={7}>
-                <Empty title="No transfers yet" />
+        <tbody className={table.body}>
+          {items.map((row) => (
+            <tr
+              key={row.id}
+              className="relative grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 border-b border-line px-4 py-3.5 last:border-b-0 hover:bg-zinc-50/60 md:table-row md:p-0"
+            >
+              <td className={table.td}>
+                <Link
+                  className="inline-flex items-center gap-2 font-semibold text-ink after:absolute after:inset-0 md:after:hidden"
+                  href={`/transfers/${row.id}`}
+                  dir="ltr"
+                >
+                  <FileText size={16} className="text-subtle" />
+                  {row.number}
+                </Link>
+              </td>
+              <td
+                className={cx(
+                  table.td,
+                  "col-start-2 row-start-2 text-end text-xs text-subtle md:text-start md:text-sm",
+                )}
+              >
+                {date(row.date)}
+              </td>
+              <td className={cx(table.td, "col-start-1 row-start-2")}>
+                <span className="inline-flex items-center gap-1.5 text-sm text-muted md:text-ink">
+                  {row.source}
+                  <ArrowRight size={13} className="rtl:-scale-x-100" />
+                  {row.destination}
+                </span>
+              </td>
+              <td
+                className={cx(
+                  table.td,
+                  "col-start-1 row-start-3 text-xs text-subtle md:text-sm md:text-ink",
+                )}
+              >
+                <CellLabel>{t("Total quantity")}</CellLabel>
+                <span dir="ltr">{Number(row.total).toLocaleString()}</span>
+              </td>
+              <td
+                className={cx(
+                  table.td,
+                  "col-start-2 row-start-1 text-end md:text-start",
+                )}
+              >
+                <Status value={row.approval} />
+              </td>
+              <td
+                className={cx(
+                  table.td,
+                  "col-start-2 row-start-3 text-end text-xs text-subtle md:text-start md:text-sm md:text-ink",
+                )}
+              >
+                {row.creator.name}
+              </td>
+              <td className={cx(table.td, "hidden md:table-cell")}>
+                <Link
+                  className={iconButton}
+                  aria-label={t("View transfer")}
+                  href={`/transfers/${row.id}`}
+                >
+                  <ArrowUpRight size={16} className="rtl:-scale-x-100" />
+                </Link>
               </td>
             </tr>
-          )}
+          ))}
         </tbody>
       </table>
     </div>
@@ -194,39 +230,41 @@ export function Dashboard() {
         action={<NewTransferLink />}
       />
       <LoadError error={error} load={load} />
-      <div className="dashboard-intro">
-        <div>
-          <span className="eyebrow">BUZZ / {t("Internal transfers")}</span>
-          <h2>{t("Move stock. Keep clarity.")}</h2>
-          <p>{t("Prepare, confirm and share inventory transfer documents.")}</p>
-          <Link href="/new-transfer" className="text-button">
+      <div className="mb-4 flex items-center justify-between gap-6 overflow-hidden rounded-xl bg-gradient-to-br from-brand to-brand-dark p-5 text-white md:mb-6 md:p-8">
+        <div className="min-w-0">
+          <span className="text-[11px] tracking-[0.18em] text-white/70 uppercase">
+            BUZZ / {t("Internal transfers")}
+          </span>
+          <h2 className="mt-2 mb-1.5 text-xl font-semibold md:text-2xl">
+            {t("Move stock. Keep clarity.")}
+          </h2>
+          <p className="m-0 text-sm leading-relaxed text-white/80">
+            {t("Prepare, confirm and share inventory transfer documents.")}
+          </p>
+          <Link
+            href="/new-transfer"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-brand hover:bg-white/90 md:min-h-10"
+          >
             {t("Create transfer")}
-            <ArrowRight size={16} />
+            <ArrowRight size={16} className="rtl:-scale-x-100" />
           </Link>
         </div>
-        <div className="intro-art" aria-hidden="true">
-          <span>
-            <Package size={33} />
+        <div
+          className="hidden shrink-0 items-center gap-3 text-white/80 sm:flex"
+          aria-hidden="true"
+        >
+          <span className="flex size-14 items-center justify-center rounded-2xl bg-white/15">
+            <Package size={28} />
           </span>
-          <div className="dashed-route">
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-          <ArrowLeftRight size={26} />
-          <div className="dashed-route">
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-          <span>
-            <MapPin size={33} />
+          <span className="w-8 border-t-2 border-dashed border-white/40" />
+          <ArrowLeftRight size={22} />
+          <span className="w-8 border-t-2 border-dashed border-white/40" />
+          <span className="flex size-14 items-center justify-center rounded-2xl bg-white/15">
+            <MapPin size={28} />
           </span>
         </div>
       </div>
-      <div className="stats">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 xl:grid-cols-4">
         {(
           [
             ["All transfers", data?.total, ArrowLeftRight],
@@ -235,37 +273,34 @@ export function Dashboard() {
             ["Catalog products", data?.products, Package],
           ] as const
         ).map(([label, value, Icon]) => (
-          <div className="stat card" key={label}>
-            <div>
+          <div
+            className="rounded-xl border border-line bg-white p-4 md:p-5"
+            key={label}
+          >
+            <div className="flex items-start justify-between gap-2 text-xs text-subtle md:text-sm">
               <span>{t(label)}</span>
-              <Icon size={19} />
+              <Icon size={18} className="shrink-0 text-brand" />
             </div>
-            <strong>{value?.toLocaleString() ?? "—"}</strong>
-            <small>
-              {label === "Catalog products"
-                ? "ITEMS.xls"
-                : t("Internal transfers")}
-            </small>
+            <strong className="mt-2 block text-2xl font-semibold tabular-nums md:text-3xl">
+              {value?.toLocaleString() ?? "—"}
+            </strong>
           </div>
         ))}
       </div>
-      <section className="card">
-        <div className="card-heading">
-          <div>
-            <h2>{t("Recent transfers")}</h2>
-          </div>
-          <Link href="/transfers" className="text-button">
+      <Card>
+        <CardHeader title={t("Recent transfers")}>
+          <Link href="/transfers" className={linkButton}>
             {t("View all")}
-            <ArrowRight size={15} />
+            <ArrowRight size={15} className="ms-1 rtl:-scale-x-100" />
           </Link>
-        </div>
+        </CardHeader>
         {data ? <TransferTable items={data.recent} /> : <Skeleton />}
-      </section>
-      <div className="dashboard-bottom">
-        <span className="muted">
+      </Card>
+      <div className="mt-5 flex flex-col gap-1 text-xs text-subtle md:flex-row md:justify-between">
+        <span>
           {user.name} · {t(user.role === "ADMIN" ? "Administrator" : "Staff")}
         </span>
-        <span className="muted">
+        <span>
           {t(
             "Confirmed documents are permanent. Administrator approval is tracked separately.",
           )}
@@ -303,6 +338,11 @@ export function HistoryPage() {
   const { data, error, load } = useLoad<{ items: Summary[]; count: number }>(
     `transfers?${params}`,
   );
+  // On phones the filters fold behind one button; the badge counts the set ones.
+  const [filters, setFilters] = useState(false);
+  const active = [status, from, to, source, destination, creator].filter(
+    Boolean,
+  ).length;
   return (
     <>
       <PageTitle
@@ -312,93 +352,127 @@ export function HistoryPage() {
       />
       <LoadError error={error} load={load} />
       {!data && !error && <Skeleton />}
-      <section className="card">
+      <Card>
         <Form
-          className="filter-bar"
+          className="flex flex-col gap-2 border-b border-line p-3 md:flex-row md:flex-wrap md:items-center md:gap-3 md:p-4"
           onSubmit={(e) => {
             e.preventDefault();
             setPage(0);
             setQuery(q);
           }}
         >
-          <div className="search-field">
-            <Search size={17} />
-            <input
-              aria-label={t("Transfer number")}
-              placeholder={t("Transfer number")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <Dropdown
-            aria-label={t("Status")}
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(0);
-            }}
-          >
-            <option value="">{t("All statuses")}</option>
-            {["PENDING", "APPROVED", "REJECTED", "RECEIVED"].map((s) => (
-              <option key={s} value={s}>
-                {t(s[0] + s.slice(1).toLowerCase())}
-              </option>
-            ))}
-          </Dropdown>
-          <DatePicker
-            label={t("Start date")}
-            value={from}
-            onChange={setFrom}
-            clearable
-          />
-          <DatePicker
-            label={t("End date")}
-            value={to}
-            onChange={setTo}
-            clearable
-          />
-          <button className="button">
-            <SlidersHorizontal size={15} />
-            {t("Filter")}
-          </button>
-          <Dropdown
-            aria-label={t("From location")}
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-          >
-            <option value="">{t("From location")}</option>
-            {locations.data?.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </Dropdown>
-          <Dropdown
-            aria-label={t("To location")}
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-          >
-            <option value="">{t("To location")}</option>
-            {locations.data?.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </Dropdown>
-          {user.role === "ADMIN" && (
-            <Dropdown
-              aria-label={t("Created by")}
-              value={creator}
-              onChange={(e) => setCreator(e.target.value)}
+          <div className="flex gap-2 md:contents">
+            <div className="relative flex-1 md:max-w-xs md:min-w-48">
+              <Search
+                size={17}
+                className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-subtle"
+              />
+              <input
+                className={cx(inputStyles, "ps-10")}
+                aria-label={t("Transfer number")}
+                placeholder={t("Transfer number")}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <Button
+              className="md:hidden"
+              aria-expanded={filters}
+              onClick={() => setFilters(!filters)}
             >
-              <option value="">{t("Created by")}</option>
-              {users.data?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
+              <SlidersHorizontal size={16} />
+              {t("Filter")}
+              {active > 0 && (
+                <span className="rounded-full bg-brand px-1.5 text-xs text-white">
+                  {active}
+                </span>
+              )}
+            </Button>
+          </div>
+          <div
+            className={cx(
+              "grid grid-cols-1 gap-2 sm:grid-cols-2 md:contents",
+              !filters && "max-md:hidden",
+            )}
+          >
+            <Dropdown
+              className="md:w-44"
+              aria-label={t("Status")}
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setPage(0);
+              }}
+            >
+              <option value="">{t("All statuses")}</option>
+              {["PENDING", "APPROVED", "REJECTED", "RECEIVED"].map((s) => (
+                <option key={s} value={s}>
+                  {t(s[0] + s.slice(1).toLowerCase())}
                 </option>
               ))}
             </Dropdown>
-          )}
+            <div className="md:w-44">
+              <DatePicker
+                label={t("Start date")}
+                value={from}
+                onChange={setFrom}
+                clearable
+              />
+            </div>
+            <div className="md:w-44">
+              <DatePicker
+                label={t("End date")}
+                value={to}
+                onChange={setTo}
+                clearable
+              />
+            </div>
+            <Dropdown
+              className="md:w-44"
+              aria-label={t("From location")}
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+            >
+              <option value="">{t("From location")}</option>
+              {locations.data?.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Dropdown>
+            <Dropdown
+              className="md:w-44"
+              aria-label={t("To location")}
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+            >
+              <option value="">{t("To location")}</option>
+              {locations.data?.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Dropdown>
+            {user.role === "ADMIN" && (
+              <Dropdown
+                className="md:w-44"
+                aria-label={t("Created by")}
+                value={creator}
+                onChange={(e) => setCreator(e.target.value)}
+              >
+                <option value="">{t("Created by")}</option>
+                {users.data?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Dropdown>
+            )}
+            <Button type="submit" variant="primary">
+              <Search size={16} />
+              {t("Search")}
+            </Button>
+          </div>
         </Form>
         {data ? (
           <>
@@ -413,7 +487,7 @@ export function HistoryPage() {
         ) : (
           <Skeleton />
         )}
-      </section>
+      </Card>
     </>
   );
 }
@@ -483,31 +557,40 @@ export function DetailPage({ id }: { id: string }) {
       <PageTitle
         title="Transfer details"
         action={
-          <Link href="/transfers" className="button">
+          <Link href="/transfers" className={buttonStyles.secondary}>
+            <ArrowRight size={16} className="ltr:rotate-180" />
             {t("Back")}
           </Link>
         }
       />
       <LoadError error={error || err} load={load} />
+      {!data && !error && <Skeleton />}
       {data && (
-        <>
-          <div className="detail-header card">
-            <h2 dir="ltr">{data.number}</h2>
-            <span>{data.source}</span>
-            <ArrowRight size={16} />
-            <span>{data.destination}</span>
-            <Status value={data.approval} />
+        <div className="flex flex-col gap-4">
+          <Card className="p-4 md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="m-0 text-xl font-semibold" dir="ltr">
+                {data.number}
+              </h2>
+              <Status value={data.approval} />
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted">
+              <MapPin size={16} className="text-brand" />
+              <span className="font-medium text-ink">{data.source}</span>
+              <ArrowRight size={15} className="rtl:-scale-x-100" />
+              <span className="font-medium text-ink">{data.destination}</span>
+            </div>
             {user.role === "ADMIN" && (
-              <div className="detail-approval">
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t border-line pt-4 sm:flex sm:flex-wrap">
                 {(data.approval === "PENDING"
                   ? ["APPROVED", "REJECTED"]
                   : data.approval === "APPROVED"
                     ? ["RECEIVED"]
                     : []
                 ).map((s) => (
-                  <button
+                  <Button
                     key={s}
-                    className="button"
+                    variant={s === "REJECTED" ? "secondary" : "primary"}
                     onClick={async () => {
                       try {
                         await api(`transfers/${id}`, { approval: s }, "PATCH");
@@ -524,10 +607,11 @@ export function DetailPage({ id }: { id: string }) {
                           ? "Reject"
                           : "Mark received",
                     )}
-                  </button>
+                  </Button>
                 ))}
-                <button
-                  className="button danger"
+                <Button
+                  variant="danger"
+                  className="col-span-2 sm:ms-auto"
                   onClick={() => {
                     setReason("");
                     setDeleting(true);
@@ -535,61 +619,58 @@ export function DetailPage({ id }: { id: string }) {
                 >
                   <Trash2 size={16} />
                   {t("Delete transfer")}
-                </button>
+                </Button>
               </div>
             )}
-          </div>
+          </Card>
           {deleting && (
             <Modal
               title="Delete transfer"
               onClose={() => !busy && setDeleting(false)}
             >
-              <p className="muted">
+              <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
                 {t(
                   "The confirmed transfer and its saved PDF will be permanently deleted. A full copy is kept in the audit log.",
                 )}
               </p>
-              <dl className="review-grid">
-                <dt>{t("Transfer number")}</dt>
-                <dd dir="ltr">{data.number}</dd>
-                <dt>{t("Route")}</dt>
-                <dd>
+              <dl className="m-0 mb-4 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+                <dt className="text-subtle">{t("Transfer number")}</dt>
+                <dd className="m-0 text-end font-semibold" dir="ltr">
+                  {data.number}
+                </dd>
+                <dt className="text-subtle">{t("Route")}</dt>
+                <dd className="m-0 text-end font-semibold">
                   {data.source} → {data.destination}
                 </dd>
               </dl>
-              <label>
-                {t("Reason (optional)")}
+              <Field label={t("Reason (optional)")}>
                 <textarea
+                  className={cx(inputStyles, "min-h-20 py-2")}
                   value={reason}
                   maxLength={500}
                   rows={3}
                   onChange={(e) => setReason(e.target.value)}
                 />
-              </label>
-              <div className="modal-actions">
-                <button
-                  className="button"
+              </Field>
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                <Button
                   data-initial-focus
                   disabled={busy}
                   onClick={() => setDeleting(false)}
                 >
                   {t("Cancel")}
-                </button>
-                <button
-                  className="button danger-solid"
-                  disabled={busy}
-                  onClick={remove}
-                >
+                </Button>
+                <Button variant="dangerSolid" disabled={busy} onClick={remove}>
                   <Trash2 size={16} />
                   {t(busy ? "Please wait…" : "Delete transfer")}
-                </button>
+                </Button>
               </div>
             </Modal>
           )}
-          <section className="card">
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead>
+          <Card>
+            <div className={table.wrap}>
+              <table className={table.table}>
+                <thead className={table.head}>
                   <tr>
                     {[
                       "Code / Barcode",
@@ -597,42 +678,81 @@ export function DetailPage({ id }: { id: string }) {
                       "Quantity",
                       "Unit",
                     ].map((h) => (
-                      <th key={h}>{t(h)}</th>
+                      <th key={h} className={table.th}>
+                        {t(h)}
+                      </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={table.body}>
                   {data.lines.map((l, i) => (
-                    <tr key={i}>
-                      <td dir="ltr">
-                        {l.code}
-                        <small>{l.barcodes.join(" · ")}</small>
+                    <tr
+                      key={i}
+                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-b border-line px-4 py-3.5 last:border-b-0 md:table-row md:p-0"
+                    >
+                      <td
+                        className={cx(table.td, "col-start-1 row-start-1")}
+                        dir="ltr"
+                      >
+                        <span className="font-semibold">{l.code}</span>
+                        {l.barcodes.length > 0 && (
+                          <small className="block text-xs text-subtle">
+                            {l.barcodes.join(" · ")}
+                          </small>
+                        )}
                       </td>
-                      <td dir="auto">
+                      <td
+                        className={cx(table.td, "col-span-2 text-sm")}
+                        dir="auto"
+                      >
                         {l.description}
-                        {l.note && <small dir="auto">{l.note}</small>}
+                        {l.note && (
+                          <small
+                            className="mt-1 block text-xs text-brand"
+                            dir="auto"
+                          >
+                            {l.note}
+                          </small>
+                        )}
                       </td>
-                      <td>{l.quantity}</td>
-                      <td>{l.unit}</td>
+                      <td
+                        className={cx(
+                          table.td,
+                          "col-start-2 row-start-1 text-end font-semibold tabular-nums md:text-start",
+                        )}
+                      >
+                        {l.quantity}
+                        <span className="ms-1 font-normal text-subtle md:hidden">
+                          {l.unit}
+                        </span>
+                      </td>
+                      <td className={cx(table.td, "hidden md:table-cell")}>
+                        {l.unit}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="items-total">
-              {data.lines.length} {t("items")}
-              <strong>
+            <div className="flex items-center justify-between gap-3 border-t border-line bg-zinc-50/60 px-4 py-3 text-sm text-subtle md:px-5">
+              <span>
+                {data.lines.length} {t("items")}
+              </span>
+              <strong className="text-ink">
                 {t("Total quantity")}: {Number(data.total)}
               </strong>
             </div>
             {data.remarks && (
-              <p className="detail-remarks" dir="auto">
+              <p
+                className="m-0 border-t border-line px-4 py-3 text-sm text-muted md:px-5"
+                dir="auto"
+              >
                 {data.remarks}
               </p>
             )}
-          </section>
+          </Card>
           <SuccessActions transfer={data} />
-        </>
+        </div>
       )}
     </>
   );
@@ -657,93 +777,140 @@ export function ProductsPage() {
         action={
           user.role === "ADMIN" && (
             <>
-              <button className="button" onClick={() => setCreating(true)}>
-                <Plus size={17} />
-                {t("New product")}
-              </button>
-              <button
-                className="button primary"
-                onClick={() => setImporting(true)}
-              >
-                <Upload size={17} />
-                {t("Import catalog")}
-              </button>
+              <div className="flex gap-2">
+                <Button onClick={() => setCreating(true)}>
+                  <Plus size={17} />
+                  {t("New product")}
+                </Button>
+                <Button variant="primary" onClick={() => setImporting(true)}>
+                  <Upload size={17} />
+                  {t("Import catalog")}
+                </Button>
+              </div>
             </>
           )
         }
       />
       <LoadError error={error} load={load} />
       {!data && !error && <Skeleton />}
-      <section className="card">
+      <Card>
         <Form
-          className="filter-bar"
+          className="flex flex-wrap items-center gap-2 border-b border-line p-3 md:gap-3 md:p-4"
           onSubmit={(e) => {
             e.preventDefault();
             setSearch(q);
             setPage(0);
           }}
         >
-          <div className="search-field wide">
-            <Search size={17} />
+          <div className="relative min-w-0 flex-1 md:max-w-md">
+            <Search
+              size={17}
+              className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-subtle"
+            />
             <input
+              type="search"
+              className={cx(inputStyles, "ps-10")}
               placeholder={t("Search code, barcode or description")}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <button className="button">{t("Search")}</button>
-          <span className="muted">
+          <Button type="submit">{t("Search")}</Button>
+          <span className="w-full text-sm text-subtle md:ms-auto md:w-auto">
             {data?.count.toLocaleString() ?? "—"} {t("Products")}
           </span>
         </Form>
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                {[
-                  "Code / Barcode",
-                  "Product description",
-                  "Units",
-                  "Barcodes",
-                  "Actions",
-                ].map((h) => (
-                  <th key={h}>{t(h)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data?.items.map((p) => (
-                <tr key={p.id}>
-                  <td className="mono" dir="ltr">
-                    {p.code}
-                  </td>
-                  <td dir="auto">{p.description}</td>
-                  <td>{p.units.join(" · ") || "—"}</td>
-                  <td dir="ltr">
-                    {p.barcodes.map((b) => b.value).join(" · ") || "—"}
-                  </td>
-                  <td>
-                    {user.role === "ADMIN" && (
-                      <button
-                        className="text-button"
-                        onClick={() => setEditing(p)}
-                      >
-                        {t("Edit")}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {data && !data.items.length && (
+        {data && !data.items.length ? (
+          <Empty title="No products found" />
+        ) : (
+          <div className={table.wrap}>
+            <table className={table.table}>
+              <thead className={table.head}>
                 <tr>
-                  <td colSpan={5}>
-                    <Empty title="No products found" />
-                  </td>
+                  {[
+                    "Code / Barcode",
+                    "Product description",
+                    "Units",
+                    "Barcodes",
+                    "",
+                  ].map((h) => (
+                    <th key={h} className={table.th}>
+                      {h && t(h)}
+                    </th>
+                  ))}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className={table.body}>
+                {data?.items.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-b border-line px-4 py-3 last:border-b-0 md:table-row md:p-0"
+                  >
+                    <td
+                      className={cx(
+                        table.td,
+                        "col-start-1 row-start-1 font-mono text-sm font-semibold",
+                      )}
+                      dir="ltr"
+                    >
+                      {p.code}
+                    </td>
+                    <td
+                      className={cx(table.td, "col-span-2 text-sm")}
+                      dir="auto"
+                    >
+                      {p.description}
+                    </td>
+                    <td
+                      className={cx(table.td, "col-span-2 text-xs md:text-sm")}
+                    >
+                      {p.units.length ? (
+                        <span className="flex flex-wrap gap-1" dir="ltr">
+                          {p.units.map((u) => (
+                            <span
+                              key={u}
+                              className="rounded-md bg-brand-soft px-1.5 py-0.5 text-brand"
+                            >
+                              {u}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-subtle">{t("No unit")}</span>
+                      )}
+                    </td>
+                    <td
+                      className={cx(
+                        table.td,
+                        "col-span-2 text-xs text-subtle md:text-sm",
+                        !p.barcodes.length && "max-md:hidden",
+                      )}
+                      dir="ltr"
+                    >
+                      {p.barcodes.map((b) => b.value).join(" · ") || "—"}
+                    </td>
+                    <td
+                      className={cx(
+                        table.td,
+                        "col-start-2 row-start-1 text-end",
+                      )}
+                    >
+                      {user.role === "ADMIN" && (
+                        <button
+                          type="button"
+                          className={cx(linkButton, "-my-2.5 md:my-0")}
+                          onClick={() => setEditing(p)}
+                        >
+                          {t("Edit")}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {data && (
           <Pagination
             page={page}
@@ -752,7 +919,7 @@ export function ProductsPage() {
             setPage={setPage}
           />
         )}
-      </section>
+      </Card>
       {user.role === "ADMIN" && <Conflicts />}
       {importing && (
         <CatalogImport
@@ -811,6 +978,7 @@ function ProductForm({
       onClose={() => onClose(false)}
     >
       <Form
+        className="flex flex-col gap-4"
         onSubmit={async (e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -829,22 +997,28 @@ function ProductForm({
           }
         }}
       >
-        {err && (
-          <p className="error" role="alert">
-            {t(err)}
-          </p>
-        )}
+        {err && <Notice tone="error">{t(err)}</Notice>}
         {product ? (
-          <p dir="ltr">{product.code}</p>
+          <p
+            className="m-0 font-mono text-base font-semibold text-ink"
+            dir="ltr"
+          >
+            {product.code}
+          </p>
         ) : (
-          <label>
-            {t("Product code")}
-            <input name="code" required dir="ltr" autoComplete="off" />
-          </label>
+          <Field label={t("Product code")}>
+            <input
+              className={inputStyles}
+              name="code"
+              required
+              dir="ltr"
+              autoComplete="off"
+            />
+          </Field>
         )}
-        <label>
-          {t("Product description")}
+        <Field label={t("Product description")}>
           <textarea
+            className={cx(inputStyles, "min-h-20 py-2")}
             name="description"
             value={description}
             onChange={(e) => {
@@ -853,10 +1027,10 @@ function ProductForm({
             }}
             required
           />
-        </label>
-        <label>
-          {t("Outer unit for (1xN)")}
+        </Field>
+        <Field label={t("Outer unit for (1xN)")}>
           <select
+            className={inputStyles}
             value={outer}
             onChange={(e) => {
               setOuter(e.target.value);
@@ -867,16 +1041,22 @@ function ProductForm({
               <option key={u}>{u}</option>
             ))}
           </select>
-        </label>
-        <fieldset className="unit-picker">
-          <legend>{t("Units")}</legend>
-          <div className="unit-chips" dir="ltr">
+        </Field>
+        <fieldset className="m-0 flex flex-col gap-3 rounded-xl border border-line p-3">
+          <legend className="px-1 text-sm font-medium text-muted">
+            {t("Units")}
+          </legend>
+          <div className="flex min-h-9 flex-wrap items-center gap-2" dir="ltr">
             {units.length ? (
               units.map((u) => (
-                <span key={u} className="unit-chip">
+                <span
+                  key={u}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-soft py-1 ps-2.5 pe-1 text-sm font-semibold text-brand"
+                >
                   {u}
                   <button
                     type="button"
+                    className="inline-flex size-7 items-center justify-center rounded-md border-0 bg-transparent text-base text-brand hover:bg-brand/10"
                     aria-label={`${t("Remove")} ${u}`}
                     onClick={() => {
                       setUnits(units.filter((x) => x !== u));
@@ -888,11 +1068,12 @@ function ProductForm({
                 </span>
               ))
             ) : (
-              <span className="muted">{t("No unit")}</span>
+              <span className="text-sm text-subtle">{t("No unit")}</span>
             )}
           </div>
-          <div className="unit-add">
+          <div className="flex gap-2">
             <input
+              className={cx(inputStyles, "flex-1")}
               value={adding}
               placeholder="CTN(1x20)"
               aria-label={t("Add unit")}
@@ -905,21 +1086,16 @@ function ProductForm({
                 }
               }}
             />
-            <button
-              type="button"
-              className="button"
-              disabled={!adding.trim()}
-              onClick={() => add(adding)}
-            >
+            <Button disabled={!adding.trim()} onClick={() => add(adding)}>
               {t("Add unit")}
-            </button>
+            </Button>
           </div>
-          <div className="unit-quick">
+          <div className="flex flex-wrap gap-1.5" dir="ltr">
             {["PCS", "CTN", "BOX", "DOZEN", "SET", "PKTS"].map((u) => (
               <button
                 key={u}
                 type="button"
-                className="text-button"
+                className="min-h-9 rounded-lg border border-dashed border-line bg-white px-2.5 text-sm font-semibold text-brand hover:border-brand disabled:opacity-35"
                 disabled={units.includes(u)}
                 onClick={() => add(u)}
               >
@@ -927,17 +1103,17 @@ function ProductForm({
               </button>
             ))}
           </div>
-          <div className="unit-actions">
+          <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-2">
             <button
               type="button"
-              className="text-button"
+              className={linkButton}
               onClick={() => detect(description, outer)}
             >
               {t("Detect units from description")}
             </button>
             <button
               type="button"
-              className="text-button danger"
+              className={cx(linkButton, "text-red-700")}
               disabled={!units.length}
               onClick={() => {
                 setUnits([]);
@@ -948,23 +1124,25 @@ function ProductForm({
             </button>
           </div>
         </fieldset>
-        <p className="muted">
+        <p className="m-0 text-xs leading-relaxed text-subtle">
           {t(
             "(1xN) gives the outer unit and PCS; (1xNxM) gives CTN, BOX and PCS. No pack size, no units.",
           )}
         </p>
-        <label>
-          {t("Barcodes")}
+        <Field label={t("Barcodes")}>
           <input
+            className={inputStyles}
             name="barcodes"
             defaultValue={product?.barcodes.map((b) => b.value).join("|")}
             dir="ltr"
           />
-        </label>
-        <p className="muted">{t("Separate multiple values with |")}</p>
-        <button className="button primary">
+          <span className="text-xs font-normal text-subtle">
+            {t("Separate multiple values with |")}
+          </span>
+        </Field>
+        <Button type="submit" variant="primary">
           {t(product ? "Save changes" : "Add product")}
-        </button>
+        </Button>
       </Form>
     </Modal>
   );
@@ -984,178 +1162,183 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const table = sheets[sheet] ?? [];
+  const cells = sheets[sheet] ?? [];
   return (
     <Modal title="Catalog import" onClose={onClose}>
-      <p className="muted">
-        {t(
-          "Product codes and barcodes are matched exactly. Units are never inferred.",
-        )}
-      </p>
-      <label>
-        {t("Source")}
-        <Dropdown value={source} onChange={(e) => setSource(e.target.value)}>
-          <option>ITEMS.xls</option>
-          <option>mehdiali.om export</option>
-        </Dropdown>
-      </label>
-      <label>
-        {t("Choose workbook")}
-        <input
-          type="file"
-          accept=".xls,.xlsx,.csv"
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            if (file.size > 15 * 1024 * 1024) {
-              setErrors(["Maximum file size: 15 MB"]);
-              return;
-            }
-            try {
-              const XLSX = await import("xlsx");
-              const workbook = XLSX.read(await file.arrayBuffer(), {
-                type: "array",
-              });
-              const all = Object.fromEntries(
-                workbook.SheetNames.map((name) => [
-                  name,
-                  XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[name], {
-                    header: 1,
-                    raw: false,
-                    defval: "",
-                  }),
-                ]),
-              );
-              setSheets(all);
-              setSheet(workbook.SheetNames[0]);
-              setRows(null);
-              setErrors([]);
-            } catch {
-              setErrors(["Could not read workbook"]);
-            }
-          }}
-        />
-      </label>
-      {Object.keys(sheets).length > 0 && (
-        <>
-          <label>
-            {t("Worksheet")}
-            <Dropdown
-              value={sheet}
-              onChange={(e) => {
-                setSheet(e.target.value);
-                setRows(null);
-              }}
-            >
-              {Object.keys(sheets).map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </Dropdown>
-          </label>
-          <div className="mapping-grid">
-            {(["code", "description", "barcodes", "units"] as const).map(
-              (field, i) => (
-                <label key={field}>
-                  {t(
-                    [
-                      "Item code column",
-                      "Description column",
-                      "Barcode column",
-                      "Unit column",
-                    ][i],
-                  )}
-                  <Dropdown
-                    value={map[field]}
-                    onChange={(e) => {
-                      setMap((m) => ({ ...m, [field]: e.target.value }));
-                      setRows(null);
-                    }}
-                  >
-                    <option value="">{t("Not supplied")}</option>
-                    {table[0]?.map((value, index) => (
-                      <option value={index} key={index}>
-                        {value || index + 1}
-                      </option>
-                    ))}
-                  </Dropdown>
-                </label>
-              ),
-            )}
-          </div>
-          <button
-            className="button"
-            onClick={() => {
-              const proposed = table
-                .slice(1)
-                .filter((r) => r.some(Boolean))
-                .map((r) => ({
-                  code: r[Number(map.code)]?.trim() ?? "",
-                  description: r[Number(map.description)]?.trim() ?? "",
-                  barcodes:
-                    map.barcodes !== ""
-                      ? (r[Number(map.barcodes)] ?? "")
-                          .split("|")
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      : [],
-                  units:
-                    map.units !== ""
-                      ? (r[Number(map.units)] ?? "")
-                          .split(/[|,]/)
-                          .map((s) => s.trim())
-                          .filter(Boolean)
-                      : [],
-                }));
-              setErrors(validateCatalog(proposed));
-              setRows(proposed);
-            }}
-          >
-            {t("Preview import")}
-          </button>
-        </>
-      )}
-      {rows && (
-        <>
-          <p>
-            {rows.length.toLocaleString()} {t("Rows")}
-          </p>
-          <div className="import-preview">
-            {rows.slice(0, 5).map((r, i) => (
-              <div key={i}>
-                <b>{r.code}</b> · <span dir="auto">{r.description}</span> ·{" "}
-                {r.units.join("|") || "—"}
-              </div>
-            ))}
-          </div>
-          <button
-            className="button primary"
-            disabled={!!errors.length || busy}
-            onClick={async () => {
-              setBusy(true);
+      <div className="flex flex-col gap-4">
+        <p className="m-0 text-sm leading-relaxed text-muted">
+          {t(
+            "Product codes and barcodes are matched exactly. Units are never inferred.",
+          )}
+        </p>
+        <Field label={t("Source")}>
+          <Dropdown value={source} onChange={(e) => setSource(e.target.value)}>
+            <option>ITEMS.xls</option>
+            <option>mehdiali.om export</option>
+          </Dropdown>
+        </Field>
+        <Field label={t("Choose workbook")}>
+          <input
+            className="block w-full text-sm text-muted file:me-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand-soft file:px-4 file:font-semibold file:text-brand md:file:min-h-10"
+            type="file"
+            accept=".xls,.xlsx,.csv"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              if (file.size > 15 * 1024 * 1024) {
+                setErrors(["Maximum file size: 15 MB"]);
+                return;
+              }
               try {
-                const result = await api<{
-                  imported: number;
-                  conflicts: number;
-                }>("catalog/import", { rows, source });
-                setMessage(
-                  `${t("Import complete")}: ${result.imported} · ${t("Conflicts")}: ${result.conflicts}`,
+                const XLSX = await import("xlsx");
+                const workbook = XLSX.read(await file.arrayBuffer(), {
+                  type: "array",
+                });
+                const all = Object.fromEntries(
+                  workbook.SheetNames.map((name) => [
+                    name,
+                    XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[name], {
+                      header: 1,
+                      raw: false,
+                      defval: "",
+                    }),
+                  ]),
                 );
+                setSheets(all);
+                setSheet(workbook.SheetNames[0]);
                 setRows(null);
-              } catch (e) {
-                setErrors([(e as Error).message]);
-              } finally {
-                setBusy(false);
+                setErrors([]);
+              } catch {
+                setErrors(["Could not read workbook"]);
               }
             }}
-          >
-            {t(busy ? "Please wait…" : "Import validated rows")}
-          </button>
-        </>
-      )}
-      {!!errors.length && (
-        <div className="error">{errors.slice(0, 10).join("\n")}</div>
-      )}
-      {message && <p className="notice">{message}</p>}
+          />
+        </Field>
+        {Object.keys(sheets).length > 0 && (
+          <>
+            <Field label={t("Worksheet")}>
+              <Dropdown
+                value={sheet}
+                onChange={(e) => {
+                  setSheet(e.target.value);
+                  setRows(null);
+                }}
+              >
+                {Object.keys(sheets).map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </Dropdown>
+            </Field>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(["code", "description", "barcodes", "units"] as const).map(
+                (field, i) => (
+                  <Field
+                    key={field}
+                    label={t(
+                      [
+                        "Item code column",
+                        "Description column",
+                        "Barcode column",
+                        "Unit column",
+                      ][i],
+                    )}
+                  >
+                    <Dropdown
+                      value={map[field]}
+                      onChange={(e) => {
+                        setMap((m) => ({ ...m, [field]: e.target.value }));
+                        setRows(null);
+                      }}
+                    >
+                      <option value="">{t("Not supplied")}</option>
+                      {cells[0]?.map((value, index) => (
+                        <option value={index} key={index}>
+                          {value || index + 1}
+                        </option>
+                      ))}
+                    </Dropdown>
+                  </Field>
+                ),
+              )}
+            </div>
+            <Button
+              onClick={() => {
+                const proposed = cells
+                  .slice(1)
+                  .filter((r) => r.some(Boolean))
+                  .map((r) => ({
+                    code: r[Number(map.code)]?.trim() ?? "",
+                    description: r[Number(map.description)]?.trim() ?? "",
+                    barcodes:
+                      map.barcodes !== ""
+                        ? (r[Number(map.barcodes)] ?? "")
+                            .split("|")
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        : [],
+                    units:
+                      map.units !== ""
+                        ? (r[Number(map.units)] ?? "")
+                            .split(/[|,]/)
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        : [],
+                  }));
+                setErrors(validateCatalog(proposed));
+                setRows(proposed);
+              }}
+            >
+              {t("Preview import")}
+            </Button>
+          </>
+        )}
+        {rows && (
+          <>
+            <p className="m-0 text-sm font-semibold">
+              {rows.length.toLocaleString()} {t("Rows")}
+            </p>
+            <div className="flex flex-col gap-1 rounded-xl bg-zinc-50 p-3 text-xs">
+              {rows.slice(0, 5).map((r, i) => (
+                <div key={i} className="truncate">
+                  <b>{r.code}</b> · <span dir="auto">{r.description}</span> ·{" "}
+                  {r.units.join("|") || "—"}
+                </div>
+              ))}
+            </div>
+            <Button
+              variant="primary"
+              disabled={!!errors.length || busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const result = await api<{
+                    imported: number;
+                    conflicts: number;
+                  }>("catalog/import", { rows, source });
+                  setMessage(
+                    `${t("Import complete")}: ${result.imported} · ${t("Conflicts")}: ${result.conflicts}`,
+                  );
+                  setRows(null);
+                } catch (e) {
+                  setErrors([(e as Error).message]);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {t(busy ? "Please wait…" : "Import validated rows")}
+            </Button>
+          </>
+        )}
+        {!!errors.length && (
+          <Notice tone="error">
+            <span className="whitespace-pre-line">
+              {errors.slice(0, 10).join("\n")}
+            </span>
+          </Notice>
+        )}
+        {message && <Notice>{message}</Notice>}
+      </div>
     </Modal>
   );
 }
@@ -1176,43 +1359,63 @@ function Conflicts() {
   }>(`catalog/conflicts?page=${page}`);
   const [err, setErr] = useState("");
   return (
-    <section className="card conflicts-card">
-      <div className="card-heading">
-        <h2>
-          {t("Review conflicts")}{" "}
-          <span className="count">{data?.count ?? 0}</span>
+    <Card className="mt-4 md:mt-6">
+      <div className="flex flex-col gap-1 border-b border-line px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
+        <h2 className="m-0 flex items-center gap-2 text-base font-semibold">
+          {t("Review conflicts")}
+          <span className="rounded-md bg-amber-50 px-1.5 text-xs text-amber-800">
+            {data?.count ?? 0}
+          </span>
         </h2>
-        <p className="muted small">
+        <p className="m-0 text-xs text-subtle md:text-sm">
           {t("Review source conflicts before applying updates.")}
         </p>
       </div>
       <LoadError error={error || err} load={load} />
       {!data?.items.length ? (
-        <p className="muted detail-remarks">{t("No pending conflicts")}</p>
+        <p className="m-0 px-4 py-4 text-sm text-subtle md:px-6">
+          {t("No pending conflicts")}
+        </p>
       ) : (
         data.items.map((c) => (
-          <details key={c.id} className="conflict">
-            <summary>
-              <b>{c.code}</b> · {c.source}
+          <details
+            key={c.id}
+            className="group border-b border-line last:border-b-0"
+          >
+            <summary className="flex min-h-12 cursor-pointer items-center gap-2 px-4 text-sm md:px-6">
+              <b dir="ltr">{c.code}</b>
+              <span className="truncate text-subtle">· {c.source}</span>
             </summary>
-            <div className="conflict-values">
-              <div>
-                <h3>{t("Current catalog value")}</h3>
-                <pre>{JSON.stringify(c.current, null, 2)}</pre>
-                <details>
-                  <summary>{t("Original source value")}</summary>
-                  <pre>{JSON.stringify(c.existing, null, 2)}</pre>
+            <div className="grid grid-cols-1 gap-3 px-4 pb-3 md:grid-cols-2 md:px-6">
+              <div className="min-w-0">
+                <h3 className="mt-0 mb-1.5 text-sm font-semibold">
+                  {t("Current catalog value")}
+                </h3>
+                <pre className="m-0 overflow-x-auto rounded-lg bg-zinc-50 p-3 text-xs">
+                  {JSON.stringify(c.current, null, 2)}
+                </pre>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-subtle">
+                    {t("Original source value")}
+                  </summary>
+                  <pre className="m-0 mt-1.5 overflow-x-auto rounded-lg bg-zinc-50 p-3 text-xs">
+                    {JSON.stringify(c.existing, null, 2)}
+                  </pre>
                 </details>
               </div>
-              <div>
-                <h3>{t("Proposed")}</h3>
-                <pre>{JSON.stringify(c.proposed, null, 2)}</pre>
+              <div className="min-w-0">
+                <h3 className="mt-0 mb-1.5 text-sm font-semibold">
+                  {t("Proposed")}
+                </h3>
+                <pre className="m-0 overflow-x-auto rounded-lg bg-zinc-50 p-3 text-xs">
+                  {JSON.stringify(c.proposed, null, 2)}
+                </pre>
               </div>
             </div>
-            <div className="modal-actions">
+            <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:flex sm:justify-end md:px-6">
               {[false, true].map((accept) => (
-                <button
-                  className="button"
+                <Button
+                  variant={accept ? "primary" : "secondary"}
                   key={String(accept)}
                   onClick={async () => {
                     try {
@@ -1227,7 +1430,7 @@ function Conflicts() {
                   }}
                 >
                   {t(accept ? "Accept proposed" : "Keep existing")}
-                </button>
+                </Button>
               ))}
             </div>
           </details>
@@ -1241,6 +1444,6 @@ function Conflicts() {
           setPage={setPage}
         />
       )}
-    </section>
+    </Card>
   );
 }

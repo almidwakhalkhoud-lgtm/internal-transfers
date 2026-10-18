@@ -11,12 +11,13 @@ export const cx = (...names: (string | false | null | undefined)[]) =>
   names.filter(Boolean).join(" ");
 
 const buttonBase =
-  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent px-4 text-sm font-semibold transition-colors disabled:cursor-default disabled:opacity-50 md:min-h-10";
+  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-4 text-sm font-semibold transition-colors disabled:cursor-default disabled:opacity-50 md:min-h-10";
 export const buttonStyles = {
-  primary: `${buttonBase} bg-brand text-white shadow-sm shadow-brand/10 hover:bg-brand-dark`,
+  primary: `${buttonBase} border-transparent bg-brand text-white shadow-sm shadow-brand/10 hover:bg-brand-dark`,
   secondary: `${buttonBase} border border-line bg-white text-ink hover:bg-zinc-50`,
   danger: `${buttonBase} border border-red-200 bg-white text-red-700 hover:bg-red-50`,
-  ghost: `${buttonBase} bg-transparent px-2 text-brand hover:bg-brand-soft`,
+  dangerSolid: `${buttonBase} border-transparent bg-red-600 text-white hover:bg-red-700`,
+  ghost: `${buttonBase} border-transparent bg-transparent px-2 text-brand hover:bg-brand-soft`,
 };
 export function Button({
   variant = "secondary",
@@ -72,7 +73,7 @@ export function CardHeader({
   );
 }
 export const inputStyles =
-  "block min-h-11 w-full rounded-lg border border-line bg-white px-3 text-base text-ink placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand/15 focus:outline-none read-only:bg-zinc-50 read-only:text-muted md:min-h-10 md:text-sm";
+  "block min-h-11 w-full rounded-lg border border-line bg-white px-3 text-base text-ink placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand/15 focus:outline-none [&[readonly]]:bg-zinc-50 [&[readonly]]:text-muted md:min-h-10 md:text-sm";
 export function Field({
   label,
   className,
