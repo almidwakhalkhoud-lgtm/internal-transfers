@@ -71,15 +71,28 @@ export default function Setup() {
           <p>{t("Set up your administrator account.")}</p>
           <label>
             {t("Name")}
-            <input name="name" autoComplete="name" required maxLength={100} />
+            <input
+              className="min-h-11 text-base md:text-sm"
+              name="name"
+              autoComplete="name"
+              required
+              maxLength={100}
+            />
           </label>
           <label>
             {t("Email")}
-            <input name="email" type="email" autoComplete="username" required />
+            <input
+              className="min-h-11 text-base md:text-sm"
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+            />
           </label>
           <label>
             {t("Password")}
             <input
+              className="min-h-11 text-base md:text-sm"
               name="password"
               type="password"
               autoComplete="new-password"

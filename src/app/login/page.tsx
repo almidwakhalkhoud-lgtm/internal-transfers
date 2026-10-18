@@ -98,6 +98,7 @@ export default function Login() {
               <label>
                 {t("Email")}
                 <input
+                  className="min-h-11 text-base md:text-sm"
                   name="email"
                   type="email"
                   autoComplete="username"
@@ -108,6 +109,7 @@ export default function Login() {
               <label>
                 {t("Password")}
                 <input
+                  className="min-h-11 text-base md:text-sm"
                   name="password"
                   type="password"
                   autoComplete="current-password"
@@ -121,6 +123,7 @@ export default function Login() {
             <label>
               {t("Access code")}
               <input
+                className="min-h-11 text-base md:text-sm"
                 name="accessCode"
                 type="password"
                 autoComplete="current-password"
@@ -143,7 +146,7 @@ export default function Login() {
           </button>
           <button
             type="button"
-            className="text-button"
+            className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-line bg-white/70 text-sm font-semibold text-brand transition-colors hover:border-brand/30 hover:bg-white"
             onClick={() => {
               setAdmin(!admin);
               setError("");
