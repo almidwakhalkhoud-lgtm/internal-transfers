@@ -97,7 +97,7 @@ export function Shell({
   ] as const;
   const navLink = (url: string) =>
     cx(
-      "relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+      "relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors lg:text-[15px]",
       path === url
         ? "bg-brand-soft font-semibold text-brand before:absolute before:-start-4 before:h-4 before:w-[3px] before:rounded-e before:bg-brand"
         : "text-muted hover:bg-zinc-50 hover:text-ink",
@@ -123,10 +123,11 @@ export function Shell({
           id="workspace-navigation"
           ref={sidebar}
           className={cx(
-            "fixed inset-y-0 start-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-e border-line bg-white px-4 pt-6 transition-transform duration-200 lg:w-60",
+            "fixed inset-y-0 start-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-e border-line bg-white px-4 pt-6 transition-[translate,visibility] duration-200 lg:w-60",
+            // Closed, the drawer is also invisible so Tab cannot reach it.
             open
-              ? "translate-x-0 shadow-xl"
-              : "max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
+              ? "visible translate-x-0 shadow-xl"
+              : "max-lg:invisible max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
           )}
         >
           <Link
@@ -240,7 +241,10 @@ export function Shell({
               </strong>
             </div>
             <div className="flex items-center gap-5 pe-2 md:pe-0">
-              <span dir="ltr" className="hidden text-xs tracking-wide text-subtle md:inline">
+              <span
+                dir="ltr"
+                className="hidden text-xs tracking-wide text-subtle md:inline"
+              >
                 MEHDI ALI TRADING Co.
               </span>
               <button

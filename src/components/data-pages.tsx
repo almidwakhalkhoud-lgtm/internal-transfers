@@ -253,13 +253,19 @@ export function Dashboard() {
           className="hidden shrink-0 items-center gap-3 text-white/80 sm:flex"
           aria-hidden="true"
         >
-          <span className="flex size-14 items-center justify-center rounded-2xl bg-white/15">
+          <span
+            data-float
+            className="flex size-14 items-center justify-center rounded-2xl bg-white/15 motion-safe:animate-[workspace-float_3.6s_ease-in-out_infinite]"
+          >
             <Package size={28} />
           </span>
           <span className="w-8 border-t-2 border-dashed border-white/40" />
           <ArrowLeftRight size={22} />
           <span className="w-8 border-t-2 border-dashed border-white/40" />
-          <span className="flex size-14 items-center justify-center rounded-2xl bg-white/15">
+          <span
+            data-float
+            className="flex size-14 items-center justify-center rounded-2xl bg-white/15 motion-safe:animate-[workspace-float_3.6s_ease-in-out_infinite]"
+          >
             <MapPin size={28} />
           </span>
         </div>

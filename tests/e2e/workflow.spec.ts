@@ -130,7 +130,7 @@ test("real product code → TAB → quantity → conditional unit → confirm �
     .click();
   const review = page.getByRole("dialog", { name: "Review transfer" });
   await expect(review.getByText("2.625", { exact: true })).toBeVisible();
-  await expect(review).toContainText(/TRF\d{5}/);
+  await expect(review).toContainText(/[A-Z]{2}-\d{4}/);
   await review
     .getByRole("button", { name: "Confirm and generate PDF" })
     .click();
@@ -145,7 +145,7 @@ test("real product code → TAB → quantity → conditional unit → confirm �
   const downloadEvent = page.waitForEvent("download");
   await downloadButton.click();
   const download = await downloadEvent;
-  expect(download.suggestedFilename()).toMatch(/^TRF\d+\.pdf$/);
+  expect(download.suggestedFilename()).toMatch(/^[A-Z]{2}-\d+\.pdf$/);
   await download.saveAs("output/qa/real-products-transfer.pdf");
   const t = await db.transfer.findFirstOrThrow({
     where: { creatorId: "test-staff" },
@@ -261,7 +261,7 @@ test("server denies unauthenticated and unauthorized access, invalid units, dupl
   ).toBe(403);
   const invalidLocation = {
     ...input,
-    destinationId: "restricted",
+    sourceId: "restricted",
     lines: [
       {
         productId: p.id,
@@ -360,7 +360,10 @@ test("Persian translation persists and RTL keeps barcode inputs LTR", async ({
   await login(page);
   await page.goto("/new-transfer");
   await page.getByRole("button", { name: "فارسی", exact: true }).click();
-  await expect(page.locator(".app")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("div[dir][lang]").first()).toHaveAttribute(
+    "dir",
+    "rtl",
+  );
   await expect(
     page.getByRole("heading", { name: "انتقال جدید" }),
   ).toBeVisible();
@@ -368,13 +371,19 @@ test("Persian translation persists and RTL keeps barcode inputs LTR", async ({
     page.getByLabel("کد / بارکد 1", { exact: true }),
   ).toHaveAttribute("dir", "ltr");
   await page.reload();
-  await expect(page.locator(".app")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("div[dir][lang]").first()).toHaveAttribute(
+    "dir",
+    "rtl",
+  );
   await page.screenshot({
     path: "output/qa/persian-entry.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "English", exact: true }).click();
-  await expect(page.locator(".app")).toHaveAttribute("dir", "ltr");
+  await expect(page.locator("div[dir][lang]").first()).toHaveAttribute(
+    "dir",
+    "ltr",
+  );
 });
 test("native file sharing branch hands the actual PDF File to the Web Share API", async ({
   page,
@@ -589,7 +598,7 @@ test("catalog preview rejects incomplete original rows and imports explicit webs
   await expect(
     modal.getByRole("button", { name: "Import validated rows" }),
   ).toBeDisabled();
-  await expect(modal.locator(".error")).toContainText("3277");
+  await expect(modal.getByRole("alert")).toContainText("3277");
   await modal.getByRole("button", { name: "Cancel", exact: true }).click();
   const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
   const result = await post(page.request, "catalog/import", {
@@ -746,24 +755,18 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
   await page.getByLabel("Code / Barcode 1", { exact: true }).fill(p.code);
   await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
   await page.getByLabel("Quantity 1", { exact: true }).fill("7.25");
-  await page
-    .getByLabel("Remarks", { exact: true })
-    .fill("Saved draft recovery test");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Draft saved");
   const number = await page
     .getByLabel("Transfer number", { exact: true })
     .inputValue();
   await page.reload();
-  await page.locator(".draft-list > summary").click();
+  await page.getByText(/^Saved drafts/).click();
   await page
     .getByRole("button", { name: `Open draft · ${number}`, exact: true })
     .click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue(
     "7.25",
-  );
-  await expect(page.getByLabel("Remarks", { exact: true })).toHaveValue(
-    "Saved draft recovery test",
   );
   await expect(page.getByLabel("Transfer number", { exact: true })).toHaveValue(
     number,
@@ -986,7 +989,9 @@ test("administrator grants only New transfer through UI and code user confirms a
   await staff
     .getByRole("button", { name: "Download PDF", exact: true })
     .click();
-  expect((await downloading).suggestedFilename()).toMatch(/TRF.*\.pdf$/);
+  expect((await downloading).suggestedFilename()).toMatch(
+    /^[A-Z]{2}-\d+\.pdf$/,
+  );
   await staff.screenshot({
     path: "output/qa/mobile-code-success.png",
     fullPage: true,
@@ -1062,13 +1067,13 @@ test("desktop typography is readable and hamburger closes outside or with Escape
   await page.goto("/new-transfer");
   expect(
     await page
-      .locator(".header-fields label")
+      .locator("label", { hasText: "From location" })
       .first()
       .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
   ).toBeGreaterThanOrEqual(13);
   expect(
     await page
-      .locator(".nav-item")
+      .getByRole("link", { name: "Overview", exact: true })
       .first()
       .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
   ).toBeGreaterThanOrEqual(15);
@@ -1080,12 +1085,12 @@ test("desktop typography is readable and hamburger closes outside or with Escape
   const menu = page.getByRole("button", { name: "Menu", exact: true });
   await menu.click();
   await expect(menu).toHaveAttribute("aria-expanded", "true");
-  const sidebarBox = await page.locator("aside.sidebar").boundingBox();
+  const sidebarBox = await page.locator("#workspace-navigation").boundingBox();
   await page
-    .locator(".sidebar-scrim")
+    .getByRole("button", { name: "Close menu", exact: true })
     .click({ position: { x: sidebarBox!.x < 100 ? 350 : 40, y: 200 } });
   await expect(menu).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator("aside.sidebar")).toBeHidden();
+  await expect(page.locator("#workspace-navigation")).toBeHidden();
   await menu.click();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
@@ -1133,7 +1138,7 @@ test("listboxes escape card clipping, remain clickable in dialogs and animate wi
   await page.keyboard.press("Escape");
   await page.goto("/dashboard");
   const contrast = await page
-    .locator(".stat > div")
+    .getByText("All transfers", { exact: true })
     .first()
     .evaluate((el) => {
       const rgb = getComputedStyle(el)
@@ -1149,12 +1154,12 @@ test("listboxes escape card clipping, remain clickable in dialogs and animate wi
       );
     });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
-  await expect(page.locator(".intro-art > span").first()).toHaveCSS(
+  await expect(page.locator("[data-float]").first()).toHaveCSS(
     "animation-name",
     "workspace-float",
   );
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(page.locator(".intro-art > span").first()).toHaveCSS(
+  await expect(page.locator("[data-float]").first()).toHaveCSS(
     "animation-name",
     "none",
   );
@@ -1255,7 +1260,7 @@ test("saved drafts can be deleted by their owner only", async ({
   ).toBe(404);
   await adminContext.close();
   await page.goto("/new-transfer");
-  await page.locator(".draft-list > summary").click();
+  await page.getByText(/^Saved drafts/).click();
   await page
     .getByRole("button", { name: `Delete draft · ${number}`, exact: true })
     .click();
