@@ -171,6 +171,8 @@ export const fa: Record<string, string> = {
   "Accept proposed": "پذیرش مقدار پیشنهادی",
   Existing: "موجود",
   Proposed: "پیشنهادی",
+  "Product codes and barcodes are matched exactly. Units come from the (1xN) pack size in the name.":
+    "کدها و بارکدها دقیق تطبیق داده می‌شوند. واحدها از اندازه بسته (1xN) در نام خوانده می‌شوند.",
   "Product codes and barcodes are matched exactly. Units are never inferred.":
     "کدها و بارکدها دقیق تطبیق داده می‌شوند. واحدها حدس زده نمی‌شوند.",
   "Add location": "افزودن مکان",
@@ -229,6 +231,15 @@ export const fa: Record<string, string> = {
   Barcodes: "بارکدها",
   Units: "واحدها",
   "Separate multiple values with |": "مقادیر متعدد را با | جدا کنید",
+  "New product": "محصول جدید",
+  "Add product": "افزودن محصول",
+  "Product code": "کد محصول",
+  "Outer unit for (1xN)": "واحد بیرونی برای (1xN)",
+  "Detect units from description": "تشخیص واحدها از روی شرح",
+  "(1xN) gives the outer unit and PCS; (1xNxM) gives CTN, BOX and PCS. No pack size, no units.":
+    "(1xN) یعنی واحد بیرونی و PCS؛ (1xNxM) یعنی CTN و BOX و PCS. بدون پرانتز، بدون واحد.",
+  "This code or barcode already belongs to a product":
+    "این کد یا بارکد قبلاً برای محصول دیگری ثبت شده است",
   "Save changes": "ذخیره تغییرات",
   "Select a product to edit its verified identifiers and units.":
     "برای ویرایش شناسه‌ها و واحدهای معتبر، محصولی را انتخاب کنید.",
@@ -327,6 +338,7 @@ export const fa: Record<string, string> = {
   LOCATION_CREATED: "ایجاد مکان",
   LOCATION_UPDATED: "ویرایش مکان",
   SETTINGS_UPDATED: "ویرایش تنظیمات",
+  PRODUCT_CREATED: "ایجاد محصول",
   PRODUCT_UPDATED: "ویرایش محصول",
   CATALOG_IMPORTED: "ورود کاتالوگ",
   CONFLICT_RESOLVED: "بررسی مغایرت",

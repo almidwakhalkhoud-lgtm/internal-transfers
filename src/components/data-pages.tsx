@@ -19,12 +19,17 @@ import {
   SlidersHorizontal,
   FileText,
   Trash2,
+  Plus,
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
 import { SuccessActions, Modal, type Product } from "./transfer-form";
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
-import { validateCatalog } from "@/lib/domain";
+import {
+  validateCatalog,
+  unitsFromDescription,
+  outerUnits,
+} from "@/lib/domain";
 type Summary = {
   id: string;
   number: string;
@@ -625,7 +630,7 @@ export function ProductsPage() {
   const [page, setPage] = useState(0);
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [err, setErr] = useState("");
+  const [creating, setCreating] = useState(false);
   const { data, error, load } = useLoad<{ items: Product[]; count: number }>(
     `products?q=${encodeURIComponent(search)}&page=${page}`,
   );
@@ -634,20 +639,26 @@ export function ProductsPage() {
       <PageTitle
         eyebrow="Workspace"
         title="Products"
-        subtitle="Product codes and barcodes are matched exactly. Units are never inferred."
+        subtitle="Product codes and barcodes are matched exactly. Units come from the (1xN) pack size in the name."
         action={
           user.role === "ADMIN" && (
-            <button
-              className="button primary"
-              onClick={() => setImporting(true)}
-            >
-              <Upload size={17} />
-              {t("Import catalog")}
-            </button>
+            <>
+              <button className="button" onClick={() => setCreating(true)}>
+                <Plus size={17} />
+                {t("New product")}
+              </button>
+              <button
+                className="button primary"
+                onClick={() => setImporting(true)}
+              >
+                <Upload size={17} />
+                {t("Import catalog")}
+              </button>
+            </>
           )
         }
       />
-      <LoadError error={error || err} load={load} />
+      <LoadError error={error} load={load} />
       {!data && !error && <Skeleton />}
       <section className="card">
         <Form
@@ -737,62 +748,143 @@ export function ProductsPage() {
           }}
         />
       )}
-      {editing && (
-        <Modal title="Edit product" onClose={() => setEditing(null)}>
-          <Form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              try {
-                await api(
-                  `products/${editing.id}`,
-                  {
-                    description: f.get("description"),
-                    units: String(f.get("units"))
-                      .split("|")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                    barcodes: String(f.get("barcodes"))
-                      .split("|")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  },
-                  "PATCH",
-                );
-                setEditing(null);
-                load();
-              } catch (e) {
-                setErr((e as Error).message);
-              }
-            }}
-          >
-            <p dir="ltr">{editing.code}</p>
-            <label>
-              {t("Product description")}
-              <textarea
-                name="description"
-                defaultValue={editing.description}
-                required
-              />
-            </label>
-            <label>
-              {t("Units")}
-              <input name="units" defaultValue={editing.units.join("|")} />
-            </label>
-            <label>
-              {t("Barcodes")}
-              <input
-                name="barcodes"
-                defaultValue={editing.barcodes.map((b) => b.value).join("|")}
-                dir="ltr"
-              />
-            </label>
-            <p className="muted">{t("Separate multiple values with |")}</p>
-            <button className="button primary">{t("Save changes")}</button>
-          </Form>
-        </Modal>
+      {(editing || creating) && (
+        <ProductForm
+          product={editing}
+          onClose={(saved) => {
+            setEditing(null);
+            setCreating(false);
+            if (saved) load();
+          }}
+        />
       )}
     </>
+  );
+}
+function ProductForm({
+  product,
+  onClose,
+}: {
+  product: Product | null;
+  onClose: (saved: boolean) => void;
+}) {
+  const { t } = useBuzz();
+  const [description, setDescription] = useState(product?.description ?? "");
+  const [outer, setOuter] = useState<string>(
+    product?.units[0]?.replace(/\(.*/, "") ?? "CTN",
+  );
+  const [units, setUnits] = useState(product?.units.join("|") ?? "");
+  // A new product follows its name until the admin types units themselves.
+  const [unitsTouched, setUnitsTouched] = useState(Boolean(product));
+  const [err, setErr] = useState("");
+  const detect = (name: string, outerUnit: string) =>
+    setUnits(unitsFromDescription(name, outerUnit).join("|"));
+  const split = (value: FormDataEntryValue | null) =>
+    String(value ?? "")
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  return (
+    <Modal
+      title={product ? "Edit product" : "New product"}
+      onClose={() => onClose(false)}
+    >
+      <Form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const body = {
+            description,
+            units: split(units),
+            barcodes: split(f.get("barcodes")),
+          };
+          try {
+            if (product) await api(`products/${product.id}`, body, "PATCH");
+            else
+              await api("products", { ...body, code: f.get("code") }, "POST");
+            onClose(true);
+          } catch (e) {
+            setErr((e as Error).message);
+          }
+        }}
+      >
+        {err && (
+          <p className="error" role="alert">
+            {t(err)}
+          </p>
+        )}
+        {product ? (
+          <p dir="ltr">{product.code}</p>
+        ) : (
+          <label>
+            {t("Product code")}
+            <input name="code" required dir="ltr" autoComplete="off" />
+          </label>
+        )}
+        <label>
+          {t("Product description")}
+          <textarea
+            name="description"
+            value={description}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              if (!unitsTouched) detect(e.target.value, outer);
+            }}
+            required
+          />
+        </label>
+        <label>
+          {t("Outer unit for (1xN)")}
+          <select
+            value={outer}
+            onChange={(e) => {
+              setOuter(e.target.value);
+              detect(description, e.target.value);
+            }}
+          >
+            {outerUnits.map((u) => (
+              <option key={u}>{u}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t("Units")}
+          <input
+            name="units"
+            value={units}
+            onChange={(e) => {
+              setUnits(e.target.value);
+              setUnitsTouched(true);
+            }}
+            dir="ltr"
+          />
+        </label>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => detect(description, outer)}
+        >
+          {t("Detect units from description")}
+        </button>
+        <p className="muted">
+          {t(
+            "(1xN) gives the outer unit and PCS; (1xNxM) gives CTN, BOX and PCS. No pack size, no units.",
+          )}
+        </p>
+        <label>
+          {t("Barcodes")}
+          <input
+            name="barcodes"
+            defaultValue={product?.barcodes.map((b) => b.value).join("|")}
+            dir="ltr"
+          />
+        </label>
+        <p className="muted">{t("Separate multiple values with |")}</p>
+        <button className="button primary">
+          {t(product ? "Save changes" : "Add product")}
+        </button>
+      </Form>
+    </Modal>
   );
 }
 function CatalogImport({ onClose }: { onClose: () => void }) {

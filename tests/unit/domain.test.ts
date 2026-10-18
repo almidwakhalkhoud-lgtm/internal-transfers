@@ -9,6 +9,7 @@ import {
   canAccess,
   validateCatalog,
   transferInput,
+  unitsFromDescription,
 } from "../../src/lib/domain";
 describe("exact product identifiers", () => {
   it("preserves zeros and internal spacing", () => {
@@ -122,5 +123,22 @@ describe("workflow and authorization", () => {
         lines: [{ productId: "p", quantity: "1", unit: "" }],
       }).success,
     ).toBe(false);
+  });
+});
+describe("units from QBM pack sizes", () => {
+  it("reads one or two pack levels from the name", () => {
+    expect(unitsFromDescription("Manchester Slim (1x10)", "BOX")).toEqual([
+      "BOX(1x10)",
+      "PCS",
+    ]);
+    expect(unitsFromDescription("KKK LIGHTER KDR2069 (1X30X25)")).toEqual([
+      "CTN(1x30)",
+      "BOX(1x25)",
+      "PCS",
+    ]);
+  });
+  it("gives no units without a pack size", () => {
+    expect(unitsFromDescription("Ocb Slim Filter")).toEqual([]);
+    expect(unitsFromDescription("SUITCASE 4PCS SET (18/20)")).toEqual([]);
   });
 });

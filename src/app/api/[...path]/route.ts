@@ -572,6 +572,55 @@ async function handle(
       });
       return NextResponse.json({ ok: true });
     }
+    if (path === "products" && method === "POST") {
+      const v = z
+        .object({
+          code: z
+            .string()
+            .transform(identifier)
+            .pipe(z.string().min(1).max(150)),
+          description: z.string().trim().min(1).max(2000),
+          barcodes: z.array(z.string().trim().min(1).max(150)),
+          units: z.array(z.string().trim().min(1).max(100)),
+        })
+        .parse(await req.json());
+      const barcodes = [...new Set(v.barcodes)];
+      const product = await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(8001)`;
+        const collision = await tx.product.findFirst({
+          where: {
+            OR: [
+              { code: { in: [v.code, ...barcodes] } },
+              { barcodes: { some: { value: { in: [v.code, ...barcodes] } } } },
+            ],
+          },
+        });
+        if (collision)
+          throw new HttpError(
+            409,
+            "This code or barcode already belongs to a product",
+          );
+        const created = await tx.product.create({
+          data: {
+            code: v.code,
+            description: v.description,
+            units: [...new Set(v.units)],
+            source: "MANUAL",
+            barcodes: { create: barcodes.map((value) => ({ value })) },
+          },
+        });
+        await tx.audit.create({
+          data: {
+            actor: user.id,
+            action: "PRODUCT_CREATED",
+            target: created.id,
+            detail: v,
+          },
+        });
+        return created;
+      });
+      return NextResponse.json(product);
+    }
     if (path === "users") {
       if (method === "GET")
         return NextResponse.json(
