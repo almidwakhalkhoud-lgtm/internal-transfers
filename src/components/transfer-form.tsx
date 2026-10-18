@@ -927,7 +927,7 @@ const EntryRow = memo(function EntryRow({
           />
         )}
       </td>
-      <td className={table.td}>
+      <td className={cx(table.td, "relative")}>
         <span className="mb-1.5 block text-xs text-subtle md:hidden">
           {t("Quantity")}
         </span>
@@ -959,7 +959,11 @@ const EntryRow = memo(function EntryRow({
           }}
         />
         {rowForm.formState.errors.quantity && (
-          <span className="mt-1 block text-xs text-red-700" role="alert">
+          // From md up it floats under the box so the row keeps its height.
+          <span
+            className="mt-1 block text-xs text-red-700 md:absolute md:start-4 md:top-full md:z-10 md:-mt-2 md:w-max md:max-w-80 md:rounded-md md:border md:border-red-100 md:bg-red-50 md:px-2.5 md:py-1.5 md:shadow-sm"
+            role="alert"
+          >
             {rowForm.formState.errors.quantity.message}
           </span>
         )}
