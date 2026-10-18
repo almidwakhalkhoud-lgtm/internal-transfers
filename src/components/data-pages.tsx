@@ -597,7 +597,10 @@ export function DetailPage({ id }: { id: string }) {
                         {l.code}
                         <small>{l.barcodes.join(" · ")}</small>
                       </td>
-                      <td dir="auto">{l.description}</td>
+                      <td dir="auto">
+                        {l.description}
+                        {l.note && <small dir="auto">{l.note}</small>}
+                      </td>
                       <td>{l.quantity}</td>
                       <td>{l.unit}</td>
                     </tr>

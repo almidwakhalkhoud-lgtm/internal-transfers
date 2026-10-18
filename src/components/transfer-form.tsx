@@ -44,6 +44,7 @@ type Line = {
   product?: Product;
   quantity: string;
   unit: string;
+  note?: string;
   error?: string;
   duplicateAccepted?: boolean;
 };
@@ -68,9 +69,10 @@ export function TransferForm({
   initialLineId: string;
 }) {
   const { t } = useBuzz();
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>(
-    [],
-  );
+  const [locations, setLocations] = useState<
+    { id: string; name: string; mine: boolean }[]
+  >([]);
+  const own = locations.filter((l) => l.mine);
   const [sourceId, setSource] = useState("");
   const [destinationId, setDestination] = useState("");
   const [date, setDate] = useState(() =>
@@ -144,10 +146,16 @@ export function TransferForm({
     [],
   );
   useEffect(() => {
-    api<{ id: string; name: string }[]>("locations")
-      .then((rows) =>
-        setLocations(rows.filter((l) => !("active" in l) || l.active)),
-      )
+    api<{ id: string; name: string; active: boolean; mine: boolean }[]>(
+      "locations",
+    )
+      .then((rows) => {
+        const active = rows.filter((l) => l.active);
+        setLocations(active);
+        // A user tied to one location always transfers from it.
+        const mine = active.filter((l) => l.mine);
+        if (mine.length === 1) setSource(mine[0].id);
+      })
       .catch((e) => setError(e.message));
     loadDrafts();
   }, [loadDrafts]); // initial server state
@@ -313,6 +321,7 @@ export function TransferForm({
           version: l.product!.updatedAt,
           quantity: l.quantity,
           unit: l.unit,
+          note: l.note?.trim() || undefined,
           duplicateAccepted: l.duplicateAccepted,
         })),
       });
@@ -410,18 +419,27 @@ export function TransferForm({
         <div className="header-fields">
           <label>
             {t("From location")}
-            <Dropdown
-              aria-label={t("From location")}
-              value={sourceId}
-              onChange={(e) => setSource(e.target.value)}
-            >
-              <option value="">{t("Select location")}</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </Dropdown>
+            {own.length === 1 ? (
+              <input
+                aria-label={t("From location")}
+                value={own[0].name}
+                readOnly
+                className="readonly"
+              />
+            ) : (
+              <Dropdown
+                aria-label={t("From location")}
+                value={sourceId}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                <option value="">{t("Select location")}</option>
+                {own.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </Dropdown>
+            )}
           </label>
           <span className="route-arrow">
             <ArrowRight size={19} />
@@ -607,7 +625,7 @@ export function TransferForm({
                 onClick={() => {
                   setKey(d.id);
                   setNumber(d.number);
-                  setSource(d.data.sourceId);
+                  if (own.length !== 1) setSource(d.data.sourceId);
                   setDestination(d.data.destinationId);
                   setDate(d.data.date);
                   setRemarks(d.data.remarks);
@@ -763,6 +781,7 @@ const EntryRow = memo(function EntryRow({
       t("Enter a positive quantity with up to 3 decimal places."),
   });
   const product = line.product;
+  const [noteOpen, setNoteOpen] = useState(Boolean(line.note));
   return (
     <tr
       className={line.error ? "invalid-row" : product ? "identified-row" : ""}
@@ -809,6 +828,18 @@ const EntryRow = memo(function EntryRow({
         >
           {product?.description ?? t("Description appears automatically")}
         </span>
+        {noteOpen && (
+          <input
+            id={`note-${line.id}`}
+            className="line-note"
+            aria-label={`${t("Item note")} ${index + 1}`}
+            dir="auto"
+            maxLength={500}
+            value={line.note ?? ""}
+            placeholder={t("Note for this item")}
+            onChange={(e) => update(line.id, { note: e.target.value })}
+          />
+        )}
       </td>
       <td data-label={t("Quantity")}>
         <input
@@ -865,7 +896,27 @@ const EntryRow = memo(function EntryRow({
           </span>
         )}
       </td>
-      <td>
+      <td className="row-actions">
+        <button
+          className={noteOpen ? "icon-button active" : "icon-button"}
+          tabIndex={-1}
+          aria-label={`${t("Item note")} ${index + 1}`}
+          aria-pressed={noteOpen}
+          title={t("Add a note")}
+          onClick={() => {
+            if (noteOpen && !line.note?.trim()) {
+              update(line.id, { note: undefined });
+              setNoteOpen(false);
+              return;
+            }
+            setNoteOpen(true);
+            requestAnimationFrame(() =>
+              document.getElementById(`note-${line.id}`)?.focus(),
+            );
+          }}
+        >
+          <Plus size={15} />
+        </button>
         <button
           className="icon-button"
           tabIndex={-1}

@@ -622,7 +622,19 @@ textarea {
   width: 14%;
 }
 .entry-table th:last-child {
-  width: 36px;
+  width: 66px;
+}
+.row-actions {
+  white-space: nowrap;
+}
+.icon-button.active {
+  background: #f4f1f5;
+  color: var(--accent);
+}
+.line-note {
+  width: 100%;
+  margin-top: 4px;
+  font-size: calc(10px + var(--desktop-type-boost, 0px));
 }
 .entry-table td:last-child {
   padding-inline: 0 13px;

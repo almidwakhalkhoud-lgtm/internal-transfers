@@ -18,6 +18,7 @@ export const transferInput = z
           version: z.iso.datetime(),
           quantity,
           unit: z.string().max(100),
+          note: z.string().trim().max(500).optional(),
           duplicateAccepted: z.boolean().optional(),
         }),
       )
@@ -34,6 +35,7 @@ export type SnapshotLine = {
   barcodes: string[];
   quantity: string;
   unit: string;
+  note?: string;
 };
 export function totalQuantity(lines: { quantity: string }[]) {
   return lines.reduce(

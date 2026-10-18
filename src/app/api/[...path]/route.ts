@@ -252,16 +252,21 @@ async function handle(
       !["locations", "new-transfer", "transfers"].some((m) => hasMenu(user, m))
     )
       throw new HttpError(403, "You do not have access to this menu");
-    if (path === "locations" && method === "GET")
+    if (path === "locations" && method === "GET") {
+      // Everyone may send to any active location; `mine` marks the ones a
+      // transfer may leave from.
+      const rows = await db.location.findMany({
+        where: user.role === "ADMIN" ? {} : { active: true },
+        orderBy: { name: "asc" },
+      });
       return NextResponse.json(
-        await db.location.findMany({
-          where:
-            user.role === "ADMIN"
-              ? {}
-              : { active: true, users: { some: { id: user.id } } },
-          orderBy: { name: "asc" },
-        }),
+        rows.map((l) => ({
+          ...l,
+          mine:
+            user.role === "ADMIN" || user.locations.some((m) => m.id === l.id),
+        })),
       );
+    }
     if (path === "products" && method === "GET") {
       const q = identifier(req.nextUrl.searchParams.get("q") ?? "");
       const exact = req.nextUrl.searchParams.has("exact");

@@ -43,9 +43,7 @@ export async function confirmTransfer(user: User, input: unknown) {
           throw new HttpError(400, "Choose active locations");
         if (
           user.role !== "ADMIN" &&
-          ![data.sourceId, data.destinationId].every((id) =>
-            user.locations.some((l) => l.id === id),
-          )
+          !user.locations.some((l) => l.id === data.sourceId)
         )
           throw new HttpError(403, "Location access denied");
         const products = await tx.product.findMany({
@@ -75,6 +73,7 @@ export async function confirmTransfer(user: User, input: unknown) {
             barcodes: p.barcodes.map((b) => b.value),
             quantity: line.quantity,
             unit: line.unit,
+            ...(line.note ? { note: line.note } : {}),
           };
         });
         const transfer = await tx.transfer.create({
