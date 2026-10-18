@@ -51,9 +51,17 @@ export function totalQuantity(lines: { quantity: string }[]) {
 export function formatTotal(total: bigint) {
   return `${total / 1000n}.${String(total % 1000n).padStart(3, "0")}`;
 }
+// One counter numbers every transfer; the letters name the route, e.g.
+// Main → Al Azaiba is MA-0001 and the next one, Main → Sur, is MS-0002.
 export function numberFor(value: number, prefix = "TRF") {
-  return prefix + String(value).padStart(5, "0");
+  return `${prefix}-${String(value).padStart(4, "0")}`;
 }
+export function routeCode(source: string, destination: string) {
+  const first = (name: string) => name.trim().charAt(0).toUpperCase();
+  return first(source) + first(destination);
+}
+export const sequenceOf = (number: string) =>
+  Number(number.match(/(\d+)$/)?.[1] ?? 0);
 export function allowedTransition(from: string, to: string) {
   return (
     (from === "PENDING" && ["APPROVED", "REJECTED"].includes(to)) ||

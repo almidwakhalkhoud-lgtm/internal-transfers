@@ -6,6 +6,9 @@ import {
   totalQuantity,
   formatTotal,
   canAccess,
+  numberFor,
+  routeCode,
+  sequenceOf,
   type SnapshotLine,
 } from "./domain";
 import { generatePdf } from "./pdf";
@@ -79,7 +82,13 @@ export async function confirmTransfer(user: User, input: unknown) {
         const transfer = await tx.transfer.create({
           data: {
             key: data.key,
-            number: draft.number,
+            number: numberFor(
+              sequenceOf(draft.number),
+              routeCode(
+                locations.find((l) => l.id === data.sourceId)!.name,
+                locations.find((l) => l.id === data.destinationId)!.name,
+              ),
+            ),
             creatorId: user.id,
             creatorName: user.name,
             sourceId: data.sourceId,

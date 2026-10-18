@@ -17,6 +17,8 @@ import {
   canAccess,
   identifier,
   numberFor,
+  routeCode,
+  sequenceOf,
   validateCatalog,
   type CatalogRow,
 } from "@/lib/domain";
@@ -345,21 +347,40 @@ async function handle(
         if (await db.transfer.findUnique({ where: { key: input.id } }))
           throw new HttpError(409, "Already confirmed");
         const data = input.data as Prisma.InputJsonObject;
-        const draft = await db.$transaction(async (tx) => {
-          if (existing)
-            return tx.draft.update({ where: { id: input.id }, data: { data } });
-          const seq = await tx.sequence.upsert({
-            where: { id: "transfer" },
-            create: { id: "transfer", value: 1 },
-            update: { value: { increment: 1 } },
-          });
-          return tx.draft.create({
-            data: {
-              id: input.id,
-              userId: user.id,
-              number: numberFor(seq.value, seq.prefix),
-              data,
+        const route = await db.location.findMany({
+          where: {
+            id: {
+              in: [data.sourceId, data.destinationId].filter(
+                (id): id is string => typeof id === "string",
+              ),
             },
+          },
+        });
+        const source = route.find((l) => l.id === data.sourceId);
+        const destination = route.find((l) => l.id === data.destinationId);
+        const draft = await db.$transaction(async (tx) => {
+          const seq = existing
+            ? await tx.sequence.findUnique({ where: { id: "transfer" } })
+            : await tx.sequence.upsert({
+                where: { id: "transfer" },
+                create: { id: "transfer", value: 1 },
+                update: { value: { increment: 1 } },
+              });
+          const prefix =
+            source && destination
+              ? routeCode(source.name, destination.name)
+              : (seq?.prefix ?? "TRF");
+          const number = numberFor(
+            existing ? sequenceOf(existing.number) : seq!.value,
+            prefix,
+          );
+          if (existing)
+            return tx.draft.update({
+              where: { id: input.id },
+              data: { data, number },
+            });
+          return tx.draft.create({
+            data: { id: input.id, userId: user.id, number, data },
           });
         });
         return NextResponse.json(draft);
