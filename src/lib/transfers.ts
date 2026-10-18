@@ -64,7 +64,7 @@ export async function confirmTransfer(user: User, input: unknown) {
               409,
               "Product data changed. Look up the product again before confirmation.",
             );
-          if (p.units.length ? !p.units.includes(line.unit) : line.unit !== "")
+          if (line.unit !== "" && !p.units.includes(line.unit))
             throw new HttpError(400, `Invalid unit for ${p.code}`);
           if (seen.has(p.id) && !line.duplicateAccepted)
             throw new HttpError(400, `Review duplicate product ${p.code}`);

@@ -857,6 +857,7 @@ const EntryRow = memo(function EntryRow({
             {product.units.map((unit) => (
               <option key={unit}>{unit}</option>
             ))}
+            <option value="">{t("No unit")}</option>
           </Dropdown>
         ) : (
           <span className="unit-empty" title={t("No defined unit")}>

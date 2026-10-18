@@ -96,6 +96,7 @@ export const fa: Record<string, string> = {
   "Scan or enter code": "اسکن یا ورود کد",
   "Description appears automatically": "شرح به صورت خودکار نمایش داده می‌شود",
   "No defined unit": "واحد تعریف نشده",
+  "No unit": "بدون واحد",
   "Add item": "افزودن کالا",
   "Remove item": "حذف کالا",
   Remarks: "توضیحات",
