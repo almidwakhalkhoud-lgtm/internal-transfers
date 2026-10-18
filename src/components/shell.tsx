@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -39,10 +40,12 @@ const Context = createContext<{
   user: Viewer;
   locale: Locale;
   t: (key: string) => string;
+  toast: (message: string, tone?: "error" | "ok") => void;
 }>({
   user: { menus: [], id: "", name: "", role: "", locale: "en" },
   locale: "en",
   t: (k) => k,
+  toast: () => {},
 });
 export const useBuzz = () => useContext(Context);
 export function Shell({
@@ -83,6 +86,25 @@ export function Shell({
   const path = usePathname();
   const router = useRouter();
   const t = (key: string) => translate(locale, key);
+  // Short messages that appear at the top and fade on their own, so a
+  // validation hint never changes the size of the page under it.
+  const [toasts, setToasts] = useState<
+    { id: number; message: string; tone: "error" | "ok" }[]
+  >([]);
+  const toast = useCallback(
+    (message: string, tone: "error" | "ok" = "error") => {
+      const id = Date.now() + Math.random();
+      setToasts((list) => [
+        ...list.filter((x) => x.message !== message),
+        { id, message, tone },
+      ]);
+      setTimeout(
+        () => setToasts((list) => list.filter((x) => x.id !== id)),
+        4000,
+      );
+    },
+    [],
+  );
   const nav = [
     ["Overview", "/dashboard", LayoutDashboard],
     ["New transfer", "/new-transfer", ArrowLeftRight],
@@ -105,12 +127,31 @@ export function Shell({
   const sectionLabel =
     "mb-2 px-3 text-[11px] font-medium tracking-widest text-subtle uppercase";
   return (
-    <Context.Provider value={{ user, locale, t }}>
+    <Context.Provider value={{ user, locale, t, toast }}>
       <div
         className="min-h-dvh bg-page font-sans text-ink"
         dir={locale === "fa" ? "rtl" : "ltr"}
         lang={locale}
       >
+        <div
+          className="pointer-events-none fixed inset-x-4 top-16 z-[120] flex flex-col items-center gap-2 md:top-20"
+          aria-live="assertive"
+        >
+          {toasts.map((x) => (
+            <div
+              key={x.id}
+              role={x.tone === "error" ? "alert" : "status"}
+              className={cx(
+                "pointer-events-auto w-full max-w-sm animate-[float-in_160ms_ease-out] rounded-xl border px-4 py-3 text-sm shadow-lg",
+                x.tone === "error"
+                  ? "border-red-100 bg-red-50 text-red-800"
+                  : "border-emerald-100 bg-emerald-50 text-emerald-800",
+              )}
+            >
+              {x.message}
+            </div>
+          ))}
+        </div>
         {open && (
           <button
             type="button"

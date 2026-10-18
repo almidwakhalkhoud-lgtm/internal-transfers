@@ -816,7 +816,7 @@ const EntryRow = memo(function EntryRow({
   advance: (id: string, fromUnit?: boolean) => void;
   remove: (id: string) => void;
 }) {
-  const { t } = useBuzz();
+  const { t, toast } = useBuzz();
   const rowForm = useForm<{ quantity: string }>({
     values: { quantity: line.quantity },
     resetOptions: { keepErrors: true, keepTouched: true },
@@ -950,23 +950,22 @@ const EntryRow = memo(function EntryRow({
             void quantityField.onChange(e);
             update(line.id, { quantity: e.target.value, error: undefined });
           }}
+          onBlur={async (e) => {
+            await quantityField.onBlur(e);
+            const error = rowForm.getFieldState("quantity").error;
+            if (error?.message && line.quantity !== "") toast(error.message);
+          }}
           onKeyDown={async (e) => {
             if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
               e.preventDefault();
               if (await rowForm.trigger("quantity")) advance(line.id);
-              else rowForm.setFocus("quantity");
+              else {
+                toast(String(rowForm.getFieldState("quantity").error?.message));
+                rowForm.setFocus("quantity");
+              }
             }
           }}
         />
-        {rowForm.formState.errors.quantity && (
-          // From md up it floats under the box so the row keeps its height.
-          <span
-            className="mt-1 block text-xs text-red-700 md:absolute md:start-4 md:top-full md:z-10 md:-mt-2 md:w-max md:max-w-80 md:rounded-md md:border md:border-red-100 md:bg-red-50 md:px-2.5 md:py-1.5 md:shadow-sm"
-            role="alert"
-          >
-            {rowForm.formState.errors.quantity.message}
-          </span>
-        )}
       </td>
       <td className={table.td}>
         <span className="mb-1.5 block text-xs text-subtle md:hidden">
