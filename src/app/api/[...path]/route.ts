@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import {
   audit,
   createSession,
+  currentUser,
+  requestOrigin,
   hash,
   HttpError,
   requireUser,
@@ -23,6 +25,7 @@ import {
   type CatalogRow,
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
+import { notifyAdmins, pushPublicKey } from "@/lib/push";
 import { readFile, unlink } from "node:fs/promises";
 import { hasMenu, menus, landingPage } from "@/lib/permissions";
 import {
@@ -107,8 +110,12 @@ async function handle(
         create: { key, attempts: 1, until: new Date(Date.now() + 15 * 60000) },
         update: { attempts: { increment: 1 } },
       });
-      if (attempt.until > new Date() && attempt.attempts > 8)
+      if (attempt.until > new Date() && attempt.attempts > 8) {
+        await audit(user?.id ?? "unknown", "LOGIN_BLOCKED", user?.id ?? "", {
+          ...(await requestOrigin()),
+        });
         throw new HttpError(429, "Too many attempts. Try again in 15 minutes.");
+      }
       if (attempt.until < new Date())
         await db.loginAttempt.update({
           where: { key },
@@ -131,11 +138,24 @@ async function handle(
         !valid ||
         !user.active ||
         (!codeMode && (user.role !== "ADMIN" || user.accessHash !== null))
-      )
+      ) {
+        await audit(user?.id ?? "unknown", "LOGIN_FAILED", user?.id ?? "", {
+          reason: !user
+            ? "Unknown access code or email"
+            : !user.active
+              ? "Account disabled"
+              : "Wrong password or code",
+          method: codeMode ? "Access code" : "Email and password",
+          ...(await requestOrigin()),
+        });
         throw new HttpError(401, "Invalid access credentials");
+      }
       await db.loginAttempt.deleteMany({ where: { key } });
       await createSession(user.id, codeMode ? user.accessHash : null);
-      await audit(user.id, "LOGIN", user.id);
+      await audit(user.id, "LOGIN", user.id, {
+        method: codeMode ? "Access code" : "Email and password",
+        ...(await requestOrigin()),
+      });
       return NextResponse.json({ ok: true, next: landingPage(user) });
     }
     if (path === "setup" && method === "POST") {
@@ -223,6 +243,9 @@ async function handle(
     }
     if (path === "logout" && method === "POST") {
       const token = (await cookies()).get("buzz-session")?.value;
+      const leaving = await currentUser();
+      if (leaving)
+        await audit(leaving.id, "LOGOUT", leaving.id, await requestOrigin());
       if (token) await db.session.deleteMany({ where: { id: hash(token) } });
       (await cookies()).delete("buzz-session");
       return NextResponse.json({ ok: true });
@@ -546,6 +569,49 @@ async function handle(
       }
     }
     await requireUser(true);
+    if (path === "push" && method === "GET")
+      return NextResponse.json({
+        publicKey: pushPublicKey(),
+        devices: await db.pushSubscription.count({
+          where: { userId: user.id },
+        }),
+      });
+    if (path === "push/subscribe" && method === "POST") {
+      const v = z
+        .object({
+          endpoint: z.url().max(2000),
+          keys: z.object({
+            p256dh: z.string().min(1).max(200),
+            auth: z.string().min(1).max(200),
+          }),
+        })
+        .parse(await req.json());
+      await db.pushSubscription.upsert({
+        where: { endpoint: v.endpoint },
+        create: { userId: user.id, endpoint: v.endpoint, ...v.keys },
+        update: { userId: user.id, ...v.keys },
+      });
+      await audit(user.id, "NOTIFICATIONS_ON", user.id, await requestOrigin());
+      return NextResponse.json({ ok: true });
+    }
+    if (path === "push/unsubscribe" && method === "POST") {
+      const v = z
+        .object({ endpoint: z.string().max(2000) })
+        .parse(await req.json());
+      await db.pushSubscription.deleteMany({
+        where: { endpoint: v.endpoint, userId: user.id },
+      });
+      await audit(user.id, "NOTIFICATIONS_OFF", user.id, await requestOrigin());
+      return NextResponse.json({ ok: true });
+    }
+    if (path === "push/test" && method === "POST") {
+      await notifyAdmins({
+        title: "BUZZ",
+        body: "Notifications are working.",
+        url: "/settings",
+      });
+      return NextResponse.json({ ok: true });
+    }
     if (path.startsWith("products/") && method === "PATCH") {
       const id = path.split("/")[1];
       const v = z
@@ -834,13 +900,55 @@ async function handle(
         0,
         Number(req.nextUrl.searchParams.get("page")) || 0,
       );
-      return NextResponse.json({
-        items: await db.audit.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 50,
-          skip: page * 50,
+      const params = req.nextUrl.searchParams;
+      const where: Prisma.AuditWhereInput = {
+        ...(params.get("actor") ? { actor: params.get("actor")! } : {}),
+        ...(params.get("action") ? { action: params.get("action")! } : {}),
+      };
+      const items = await db.audit.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        skip: page * 50,
+      });
+      // Ids mean nothing to a reader; name every person, transfer, location
+      // and product an entry points at.
+      const ids = [...new Set(items.flatMap((a) => [a.actor, a.target]))];
+      const [users, transfers, locations, products] = await Promise.all([
+        db.user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
         }),
-        count: await db.audit.count(),
+        db.transfer.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, number: true },
+        }),
+        db.location.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
+        }),
+        db.product.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, code: true },
+        }),
+      ]);
+      const names = new Map<string, string>([
+        ...users.map((u) => [u.id, u.name] as [string, string]),
+        ...transfers.map((t) => [t.id, t.number] as [string, string]),
+        ...locations.map((l) => [l.id, l.name] as [string, string]),
+        ...products.map((p) => [p.id, p.code] as [string, string]),
+      ]);
+      return NextResponse.json({
+        items: items.map((a) => ({
+          ...a,
+          actorName: names.get(a.actor) ?? null,
+          targetName: names.get(a.target) ?? null,
+        })),
+        count: await db.audit.count({ where }),
+        users: await db.user.findMany({
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
       });
     }
     if (path === "catalog/conflicts" && method === "GET") {

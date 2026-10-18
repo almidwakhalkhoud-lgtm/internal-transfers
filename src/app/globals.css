@@ -2757,3 +2757,6 @@ textarea::placeholder {
     --py: 0 !important;
   }
 }
+.audit-warning td {
+  background: #fff6f4;
+}

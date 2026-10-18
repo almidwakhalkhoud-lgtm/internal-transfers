@@ -31,6 +31,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hook-form": "^7.90.0",
+    "web-push": "^3.6.7",
     "xlsx": "npm:@e965/xlsx@^0.20.3",
     "zod": "^4.3.6"
   },
@@ -40,6 +41,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/web-push": "^3.6.4",
     "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9.39.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",

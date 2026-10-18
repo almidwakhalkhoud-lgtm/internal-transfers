@@ -4,7 +4,7 @@ import { Form } from "@/components/form";
 import Link from "next/link";
 import { menus } from "@/lib/permissions";
 import { Skeleton } from "./skeleton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
@@ -481,6 +481,149 @@ export function UsersPage() {
     </>
   );
 }
+function vapidKey(base64: string) {
+  const raw = atob(
+    (base64 + "=".repeat((4 - (base64.length % 4)) % 4))
+      .replace(/-/g, "+")
+      .replace(/_/g, "/"),
+  );
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+// Turns transfer notifications on or off for the browser it is opened in.
+function Notifications() {
+  const { t } = useBuzz();
+  const supported =
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window;
+  const [subscription, setSubscription] = useState<PushSubscription | null>(
+    null,
+  );
+  const [server, setServer] = useState<{
+    publicKey: string;
+    devices: number;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    api<{ publicKey: string; devices: number }>("push")
+      .then(setServer)
+      .catch((e) => setErr(e.message));
+    if (!supported) return;
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
+      .then((r) => r.pushManager.getSubscription())
+      .then(setSubscription)
+      .catch((e) => setErr(e.message));
+  }, [supported]);
+  async function run(task: () => Promise<string>) {
+    setBusy(true);
+    setErr("");
+    setMessage("");
+    try {
+      setMessage(await task());
+      setServer(await api("push"));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="card settings-card">
+      <div className="card-heading">
+        <h2>{t("Transfer notifications")}</h2>
+      </div>
+      <p className="muted">
+        {t(
+          "Get a notification on this device whenever anyone confirms a transfer.",
+        )}
+      </p>
+      {!supported ? (
+        <p className="error">
+          {t(
+            "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
+          )}
+        </p>
+      ) : server && !server.publicKey ? (
+        <p className="error">
+          {t("Notifications are not configured on the server yet.")}
+        </p>
+      ) : (
+        <div className="modal-actions">
+          {subscription ? (
+            <>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await api("push/test", {});
+                    return "Test notification sent";
+                  })
+                }
+              >
+                {t("Send a test")}
+              </button>
+              <button
+                className="button danger"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await api("push/unsubscribe", {
+                      endpoint: subscription.endpoint,
+                    });
+                    await subscription.unsubscribe();
+                    setSubscription(null);
+                    return "Notifications turned off on this device";
+                  })
+                }
+              >
+                {t("Turn off on this device")}
+              </button>
+            </>
+          ) : (
+            <button
+              className="button primary"
+              disabled={busy || !server}
+              onClick={() =>
+                run(async () => {
+                  if ((await Notification.requestPermission()) !== "granted")
+                    throw new Error(
+                      "Notifications are blocked. Allow them in the browser settings.",
+                    );
+                  const registration = await navigator.serviceWorker.ready;
+                  const sub = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: vapidKey(server!.publicKey),
+                  });
+                  await api("push/subscribe", sub.toJSON());
+                  setSubscription(sub);
+                  return "Notifications turned on for this device";
+                })
+              }
+            >
+              {t("Turn on for this device")}
+            </button>
+          )}
+          {server && (
+            <span className="muted">
+              {t("Devices receiving notifications")}: {server.devices}
+            </span>
+          )}
+        </div>
+      )}
+      {message && <p className="notice">{t(message)}</p>}
+      {err && (
+        <p className="error" role="alert">
+          {t(err)}
+        </p>
+      )}
+    </section>
+  );
+}
 export function SettingsPage() {
   const { t } = useBuzz();
   const { data, error, load } = useLoad<{ value: number }>("settings");
@@ -491,6 +634,7 @@ export function SettingsPage() {
       <PageTitle eyebrow="Administration" title="Settings" />
       <LoadError error={error || err} load={load} />
       {!data && !error && <Skeleton rows={3} />}
+      <Notifications />
       <section className="card settings-card">
         <div className="card-heading">
           <h2>{t("Numbering sequence")}</h2>
@@ -544,52 +688,208 @@ export function SettingsPage() {
     </>
   );
 }
+type AuditEntry = {
+  id: string;
+  actor: string;
+  actorName: string | null;
+  action: string;
+  target: string;
+  targetName: string | null;
+  createdAt: string;
+  detail: Record<string, unknown> | null;
+};
+const auditActions = [
+  "LOGIN",
+  "LOGIN_FAILED",
+  "LOGIN_BLOCKED",
+  "LOGOUT",
+  "NOTIFICATIONS_ON",
+  "NOTIFICATIONS_OFF",
+  "TRANSFER_CONFIRMED",
+  "TRANSFER_DELETED",
+  "DRAFT_DELETED",
+  "APPROVED",
+  "REJECTED",
+  "RECEIVED",
+  "PRODUCT_CREATED",
+  "PRODUCT_UPDATED",
+  "CATALOG_IMPORTED",
+  "CONFLICT_RESOLVED",
+  "USER_CREATED",
+  "USER_UPDATED",
+  "LOCATION_CREATED",
+  "LOCATION_UPDATED",
+  "SETTINGS_UPDATED",
+];
+// One readable line per entry, built from what the entry recorded.
+function describe(a: AuditEntry, t: (key: string) => string) {
+  const d = a.detail ?? {};
+  const s = (key: string) =>
+    d[key] === undefined || d[key] === null || d[key] === ""
+      ? ""
+      : String(d[key]);
+  const where = [s("device"), s("place"), s("ip") && `IP ${s("ip")}`]
+    .filter(Boolean)
+    .join(" · ");
+  const list = (value: unknown) =>
+    Array.isArray(value) && value.length ? value.join(", ") : "—";
+  switch (a.action) {
+    case "LOGIN":
+    case "LOGOUT":
+    case "LOGIN_BLOCKED":
+    case "NOTIFICATIONS_ON":
+    case "NOTIFICATIONS_OFF":
+      return [s("method") && t(s("method")), where].filter(Boolean).join(" · ");
+    case "LOGIN_FAILED":
+      return [t(s("reason")), s("method") && t(s("method")), where]
+        .filter(Boolean)
+        .join(" · ");
+    case "TRANSFER_CONFIRMED":
+    case "TRANSFER_DELETED":
+      return [
+        s("number") || a.targetName,
+        (s("from") || s("source")) &&
+          `${s("from") || s("source")} → ${s("to") || s("destination")}`,
+        s("lines") && `${s("lines")} ${t("items")}`,
+        s("total") && `${t("Total quantity")} ${s("total")}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "DRAFT_DELETED":
+      return s("number");
+    case "PRODUCT_CREATED":
+      return [s("code"), s("description"), `${t("Units")}: ${list(d.units)}`]
+        .filter(Boolean)
+        .join(" · ");
+    case "PRODUCT_UPDATED": {
+      const before = (d.before ?? {}) as Record<string, unknown>;
+      const after = (d.after ?? {}) as Record<string, unknown>;
+      const changes = [
+        before.description !== after.description &&
+          `${t("Product description")}: ${String(before.description ?? "—")} → ${String(after.description ?? "—")}`,
+        list(before.units) !== list(after.units) &&
+          `${t("Units")}: ${list(before.units)} → ${list(after.units)}`,
+      ].filter(Boolean);
+      return [String(before.code ?? a.targetName ?? ""), ...changes]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    case "USER_UPDATED":
+      return [
+        a.targetName,
+        d.passwordReset && t("Password reset"),
+        d.codeRotated && t("Access code changed"),
+        d.codeRevoked && t("Access code revoked"),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "CATALOG_IMPORTED":
+      return `${t("Imported")}: ${s("imported")} · ${t("Conflicts")}: ${s("conflicts")}`;
+    case "SETTINGS_UPDATED":
+      return (
+        s("nextValue") && `${t("Next transfer number")}: ${s("nextValue")}`
+      );
+    default:
+      return a.targetName ?? "";
+  }
+}
 export function AuditPage() {
   const { t } = useBuzz();
   const [page, setPage] = useState(0);
+  const [actor, setActor] = useState("");
+  const [action, setAction] = useState("");
   const { data, error, load } = useLoad<{
-    items: {
-      id: string;
-      actor: string;
-      action: string;
-      target: string;
-      createdAt: string;
-      detail: unknown;
-    }[];
+    items: AuditEntry[];
     count: number;
-  }>(`audit?page=${page}`);
+    users: { id: string; name: string }[];
+  }>(
+    `audit?page=${page}&actor=${encodeURIComponent(actor)}&action=${encodeURIComponent(action)}`,
+  );
   return (
     <>
       <PageTitle eyebrow="Administration" title="Audit log" />
       <LoadError error={error} load={load} />
       <section className="card">
+        <div className="filter-bar">
+          <Dropdown
+            aria-label={t("User")}
+            value={actor}
+            onChange={(e) => {
+              setActor(e.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t("All users")}</option>
+            {data?.users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Dropdown>
+          <Dropdown
+            aria-label={t("Action")}
+            value={action}
+            onChange={(e) => {
+              setAction(e.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t("All events")}</option>
+            {auditActions.map((a) => (
+              <option key={a} value={a}>
+                {t(a)}
+              </option>
+            ))}
+          </Dropdown>
+          <span className="muted">
+            {data?.count.toLocaleString() ?? "—"} {t("entries")}
+          </span>
+        </div>
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                {["Date", "Actor", "Action", "Target"].map((h) => (
+                {["Date", "User", "Action", "Details"].map((h) => (
                   <th key={h}>{t(h)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {data?.items.map((a) => (
-                <tr key={a.id}>
-                  <td>
+                <tr
+                  key={a.id}
+                  className={
+                    a.action === "LOGIN_FAILED" || a.action === "LOGIN_BLOCKED"
+                      ? "audit-warning"
+                      : undefined
+                  }
+                >
+                  <td dir="ltr">
                     {new Date(a.createdAt).toLocaleString("en-GB", {
                       timeZone: "Asia/Dubai",
                     })}
                   </td>
-                  <td className="mono">{a.actor}</td>
-                  <td>{t(a.action)}</td>
                   <td>
+                    {a.actorName ??
+                      (a.actor === "unknown" ? t("Unknown person") : a.actor)}
+                  </td>
+                  <td>{t(a.action)}</td>
+                  <td dir="auto">
+                    {describe(a, t) || "—"}
                     <details>
-                      <summary className="mono">{a.target}</summary>
+                      <summary className="muted small">{t("More")}</summary>
                       <pre>{JSON.stringify(a.detail, null, 2)}</pre>
                     </details>
                   </td>
                 </tr>
               ))}
+              {data && !data.items.length && (
+                <tr>
+                  <td colSpan={4}>
+                    <Empty title="No records" />
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

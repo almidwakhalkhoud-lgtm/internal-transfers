@@ -24,19 +24,31 @@ enum ConfirmationStatus {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String
-  password  String
-  role      Role       @default(STAFF)
-  active    Boolean    @default(true)
-  locale    String     @default("en")
-  accessHash String?   @unique
-  accessVerifier String?
-  menus     String[]   @default(["dashboard", "new-transfer", "transfers", "products", "locations"])
-  locations Location[]
-  sessions  Session[]
-  transfers Transfer[]
+  id                String             @id @default(cuid())
+  email             String             @unique
+  name              String
+  password          String
+  role              Role               @default(STAFF)
+  active            Boolean            @default(true)
+  locale            String             @default("en")
+  accessHash        String?            @unique
+  accessVerifier    String?
+  menus             String[]           @default(["dashboard", "new-transfer", "transfers", "products", "locations"])
+  locations         Location[]
+  sessions          Session[]
+  transfers         Transfer[]
+  pushSubscriptions PushSubscription[]
+}
+
+// A browser that asked to be told about new transfers (Web Push).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
 }
 
 model Session {

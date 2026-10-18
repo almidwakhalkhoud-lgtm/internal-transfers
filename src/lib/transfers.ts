@@ -14,6 +14,7 @@ import {
 } from "./domain";
 import { generatePdf } from "./pdf";
 import { hash } from "./auth";
+import { notifyAdmins } from "./push";
 type User = NonNullable<
   Awaited<ReturnType<typeof import("./auth").currentUser>>
 >;
@@ -32,7 +33,7 @@ export async function confirmTransfer(user: User, input: unknown) {
     return existing;
   }
   try {
-    return await db.$transaction(
+    const created = await db.$transaction(
       async (tx) => {
         const draft = await tx.draft.findUnique({ where: { id: data.key } });
         if (!draft || draft.userId !== user.id)
@@ -110,7 +111,13 @@ export async function confirmTransfer(user: User, input: unknown) {
             actor: user.id,
             action: "TRANSFER_CONFIRMED",
             target: transfer.id,
-            detail: { number: transfer.number, lines: lines.length },
+            detail: {
+              number: transfer.number,
+              from: transfer.source,
+              to: transfer.destination,
+              lines: lines.length,
+              total: transfer.total.toString(),
+            },
           },
         });
         await tx.draft.delete({ where: { id: data.key } });
@@ -118,6 +125,13 @@ export async function confirmTransfer(user: User, input: unknown) {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    // Only a newly confirmed transfer is announced, never a retried one.
+    await notifyAdmins({
+      title: `${created.number} · ${created.source} → ${created.destination}`,
+      body: `${created.creatorName} · ${(created.lines as SnapshotLine[]).length} items · ${created.total}`,
+      url: `/transfers/${created.id}`,
+    }).catch((e) => console.error("Transfer notification failed", e));
+    return created;
   } catch (e) {
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&

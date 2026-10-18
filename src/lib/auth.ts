@@ -83,6 +83,38 @@ export async function createSession(
     maxAge: 8 * 3600,
   });
 }
+// Where a request came from, for the audit log: address, rough place (Vercel
+// adds the city and country headers) and the device and browser it used.
+export async function requestOrigin() {
+  const h = await headers();
+  const ua = h.get("user-agent") ?? "";
+  const device =
+    [
+      [/iPhone/, "iPhone"],
+      [/iPad/, "iPad"],
+      [/Android/, "Android"],
+      [/Windows/, "Windows"],
+      [/Mac OS X/, "Mac"],
+      [/Linux/, "Linux"],
+    ].find(([re]) => (re as RegExp).test(ua))?.[1] ?? "Unknown device";
+  const browser =
+    [
+      [/Edg\//, "Edge"],
+      [/OPR\//, "Opera"],
+      [/SamsungBrowser/, "Samsung Internet"],
+      [/Chrome\//, "Chrome"],
+      [/Firefox\//, "Firefox"],
+      [/Safari\//, "Safari"],
+    ].find(([re]) => (re as RegExp).test(ua))?.[1] ?? "Unknown browser";
+  const city = h.get("x-vercel-ip-city");
+  return {
+    ip: h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip"),
+    place: [city && decodeURIComponent(city), h.get("x-vercel-ip-country")]
+      .filter(Boolean)
+      .join(", "),
+    device: `${device} · ${browser}`,
+  };
+}
 export async function audit(
   actor: string,
   action: string,
