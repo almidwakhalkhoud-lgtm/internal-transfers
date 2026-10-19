@@ -23,6 +23,16 @@ enum ConfirmationStatus {
   CONFIRMED
 }
 
+// A request (طلبیه) asks another location for items. That location sets how
+// much it can send of each, drops what it lacks, and confirming it creates the
+// transfer from that location back to the requester.
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+  DECLINED
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -33,7 +43,7 @@ model User {
   locale            String             @default("en")
   accessHash        String?            @unique
   accessVerifier    String?
-  menus             String[]           @default(["dashboard", "new-transfer", "transfers", "products", "locations"])
+  menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "products", "locations"])
   locations         Location[]
   sessions          Session[]
   transfers         Transfer[]
@@ -126,9 +136,37 @@ model Transfer {
   pdfHash       String?
   pdfError      Boolean            @default(false)
   qbmEntry      QbmEntry?
+  request       StockRequest?
 
   @@index([creatorId, confirmedAt])
   @@index([approval, confirmedAt])
+}
+
+model StockRequest {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  creatorId   String
+  creatorName String
+  // The requester receives the items; the supplier sends them.
+  requesterId String
+  supplierId  String
+  requester   String
+  supplier    String
+  remarks     String
+  status      RequestStatus @default(OPEN)
+  // Each line keeps the requested quantity and, once the supplier has worked
+  // on it, the quantity it sends (`supplied`) or that it is unavailable.
+  lines       Json
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  closedById  String?
+  closedAt    DateTime?
+  transferId  String?       @unique
+  transfer    Transfer?     @relation(fields: [transferId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([supplierId, status])
+  @@index([requesterId, status])
 }
 
 model Draft {

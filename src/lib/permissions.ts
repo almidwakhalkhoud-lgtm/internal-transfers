@@ -1,6 +1,7 @@
 export const menus = [
   "dashboard",
   "new-transfer",
+  "requests",
   "transfers",
   "products",
   "locations",

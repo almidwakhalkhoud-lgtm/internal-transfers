@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { hasMenu, landingPage } from "@/lib/permissions";
 import { currentUser } from "@/lib/auth";
 import { Dashboard, HistoryPage, ProductsPage } from "@/components/data-pages";
+import { RequestsPage } from "@/components/request-pages";
 import {
   LocationsPage,
   UsersPage,
@@ -28,6 +29,8 @@ export default async function Page({
       return <Dashboard />;
     case "transfers":
       return <HistoryPage />;
+    case "requests":
+      return <RequestsPage />;
     case "products":
       return <ProductsPage />;
     case "locations":

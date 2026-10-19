@@ -1332,3 +1332,93 @@ test("administrators delete confirmed transfers with an audit snapshot", async (
   });
   await adminContext.close();
 });
+test("a request is filled by the supplier with smaller quantities and becomes a transfer", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const [withUnit, noUnit] = await Promise.all([
+    db.product.findUniqueOrThrow({ where: { id: "real-unit" } }),
+    db.product.findUniqueOrThrow({ where: { id: "real-no-unit" } }),
+  ]);
+  // Staff works at Main and Al Azaiba, so it may only request for those.
+  expect(
+    (
+      await post(page.request, "requests", {
+        requesterId: "restricted",
+        supplierId: "branch",
+        remarks: "",
+        lines: [{ productId: noUnit.id, quantity: "1", unit: "" }],
+      })
+    ).status(),
+  ).toBe(403);
+  const created = await post(page.request, "requests", {
+    requesterId: "branch",
+    supplierId: "restricted",
+    remarks: "AUTOMATED TEST ONLY",
+    lines: [
+      { productId: withUnit.id, quantity: "10", unit: withUnit.units[0] },
+      { productId: noUnit.id, quantity: "5", unit: "" },
+    ],
+  });
+  expect(created.ok()).toBeTruthy();
+  const request = await created.json();
+  // Only the supplier's location decides what is sent.
+  expect(
+    (
+      await post(page.request, `requests/${request.id}/fulfill`, {
+        lines: [{ supplied: "10" }, { supplied: "5" }],
+      })
+    ).status(),
+  ).toBe(403);
+  const supplierContext = await browser.newContext();
+  const supplier = await supplierContext.newPage();
+  await login(supplier, "outside@buzz.test");
+  await supplier.goto("/requests");
+  await supplier.getByRole("link", { name: request.number }).first().click();
+  await expect(supplier.getByText("Awaiting your reply")).toBeVisible();
+  await supplier.getByLabel("Sent 1", { exact: true }).fill("8");
+  await supplier
+    .getByRole("button", { name: "Not available 2", exact: true })
+    .click();
+  await supplier
+    .getByRole("button", { name: "Confirm and create transfer", exact: true })
+    .click();
+  await supplier
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirm and generate PDF", exact: true })
+    .click();
+  await expect(
+    supplier.getByText("Transfer Confirmed Successfully"),
+  ).toBeVisible({ timeout: 60000 });
+  const saved = await db.stockRequest.findUniqueOrThrow({
+    where: { id: request.id },
+    include: { transfer: true },
+  });
+  expect(saved.status).toBe("FULFILLED");
+  expect(saved.transfer).toMatchObject({
+    sourceId: "restricted",
+    destinationId: "branch",
+    creatorId: "test-outsider",
+    approval: "PENDING",
+    remarks: `Request ${request.number}`,
+  });
+  expect(saved.transfer!.total.toString()).toBe("8");
+  expect(saved.transfer!.lines).toEqual([
+    expect.objectContaining({
+      code: withUnit.code,
+      quantity: "8",
+      unit: withUnit.units[0],
+    }),
+  ]);
+  // The requester sees what was sent and can open the transfer.
+  await page.goto(`/requests/${request.id}`);
+  await expect(page.getByText("Not available")).toBeVisible();
+  await page.getByRole("link", { name: saved.transfer!.number }).click();
+  await expect(page.getByText(`From request`)).toBeVisible();
+  // A filled request cannot be filled or cancelled again.
+  expect(
+    (await post(page.request, `requests/${request.id}/cancel`, {})).status(),
+  ).toBe(409);
+  await supplierContext.close();
+});

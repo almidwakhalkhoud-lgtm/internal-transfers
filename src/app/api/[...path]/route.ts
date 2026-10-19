@@ -17,6 +17,7 @@ import {
 import {
   allowedTransition,
   canAccess,
+  canSupply,
   identifier,
   numberFor,
   routeCode,
@@ -25,6 +26,13 @@ import {
   type CatalogRow,
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
+import {
+  closeRequest,
+  createRequest,
+  findRequest,
+  fulfillRequest,
+  saveSupply,
+} from "@/lib/requests";
 import { missingPushKeys, pushPublicKey, sendPush } from "@/lib/push";
 import { integrationApi, newApiKey } from "@/lib/integration-api";
 import { readFile, unlink } from "node:fs/promises";
@@ -261,24 +269,38 @@ async function handle(
             path.startsWith("drafts/") ||
             (path === "transfers" && method === "POST")
           ? "new-transfer"
-          : path.endsWith("/pdf") && hasMenu(user, "new-transfer")
-            ? null
-            : path.startsWith("transfers")
-              ? "transfers"
-              : path === "products"
-                ? req.nextUrl.searchParams.has("exact")
-                  ? "new-transfer"
-                  : "products"
-                : path === "locations" && method === "GET"
-                  ? null
-                  : null;
-    if (requiredMenu && !hasMenu(user, requiredMenu))
+          : path === "requests" || path.startsWith("requests/")
+            ? "requests"
+            : path.endsWith("/pdf") &&
+                (hasMenu(user, "new-transfer") || hasMenu(user, "requests"))
+              ? null
+              : path.startsWith("transfers")
+                ? "transfers"
+                : path === "products"
+                  ? req.nextUrl.searchParams.has("exact")
+                    ? "new-transfer"
+                    : "products"
+                  : path === "locations" && method === "GET"
+                    ? null
+                    : null;
+    // Requests look products up by code exactly as new transfers do.
+    if (
+      requiredMenu &&
+      !hasMenu(user, requiredMenu) &&
+      !(
+        requiredMenu === "new-transfer" &&
+        path === "products" &&
+        hasMenu(user, "requests")
+      )
+    )
       throw new HttpError(403, "You do not have access to this menu");
     if (
       path === "locations" &&
       method === "GET" &&
       user.role !== "ADMIN" &&
-      !["locations", "new-transfer", "transfers"].some((m) => hasMenu(user, m))
+      !["locations", "new-transfer", "requests", "transfers"].some((m) =>
+        hasMenu(user, m),
+      )
     )
       throw new HttpError(403, "You do not have access to this menu");
     if (path === "locations" && method === "GET") {
@@ -511,6 +533,112 @@ async function handle(
         count: await db.transfer.count({ where }),
       });
     }
+    if (path === "requests" && method === "POST") {
+      const r = await createRequest(user, await req.json());
+      return NextResponse.json({ id: r.id, number: r.number });
+    }
+    if (path === "requests" && method === "GET") {
+      const q = req.nextUrl.searchParams;
+      const page = Math.max(0, Number(q.get("page")) || 0);
+      const mine = user.locations.map((l) => l.id);
+      const box = q.get("box");
+      const where: Prisma.StockRequestWhereInput = {
+        AND: [
+          user.role === "ADMIN"
+            ? {}
+            : {
+                OR: [
+                  { creatorId: user.id },
+                  { requesterId: { in: mine } },
+                  { supplierId: { in: mine } },
+                ],
+              },
+          box === "incoming"
+            ? { supplierId: { in: mine } }
+            : box === "outgoing"
+              ? { OR: [{ creatorId: user.id }, { requesterId: { in: mine } }] }
+              : {},
+        ],
+        number: { contains: q.get("q") ?? "", mode: "insensitive" },
+        ...(q.get("status")
+          ? {
+              status: z
+                .enum(["OPEN", "FULFILLED", "CANCELLED", "DECLINED"])
+                .parse(q.get("status")),
+            }
+          : {}),
+      };
+      const items = await db.stockRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 25,
+        skip: page * 25,
+        include: { transfer: { select: { id: true, number: true } } },
+      });
+      return NextResponse.json({
+        items: items.map(({ lines, ...r }) => ({
+          ...r,
+          lines: (lines as unknown[]).length,
+          canSupply: canSupply(user, r),
+        })),
+        count: await db.stockRequest.count({ where }),
+      });
+    }
+    const requestMatch = path.match(
+      /^requests\/([^/]+)(?:\/(fulfill|cancel|decline))?$/,
+    );
+    if (requestMatch) {
+      const [, id, action] = requestMatch;
+      if (!action && method === "GET") {
+        const { transfer, ...r } = await findRequest(user, id);
+        return NextResponse.json({
+          ...r,
+          transfer: transfer && {
+            id: transfer.id,
+            number: transfer.number,
+            pdfReady: !!transfer.pdf,
+          },
+          canSupply: canSupply(user, r),
+          canCancel:
+            user.role === "ADMIN" ||
+            r.creatorId === user.id ||
+            user.locations.some((l) => l.id === r.requesterId),
+        });
+      }
+      if (!action && method === "PATCH") {
+        await saveSupply(user, id, await req.json());
+        return NextResponse.json({ ok: true });
+      }
+      if (action === "fulfill" && method === "POST") {
+        const t = await fulfillRequest(user, id, await req.json());
+        try {
+          await transferPdf(user, t.id);
+        } catch {
+          return NextResponse.json({
+            id: t.id,
+            number: t.number,
+            pdfReady: false,
+          });
+        }
+        return NextResponse.json({
+          id: t.id,
+          number: t.number,
+          pdfReady: true,
+        });
+      }
+      if ((action === "cancel" || action === "decline") && method === "POST") {
+        const { reason } = z
+          .object({ reason: z.string().trim().max(500).optional() })
+          .parse(await req.json().catch(() => ({})));
+        await closeRequest(
+          user,
+          id,
+          action === "cancel" ? "CANCELLED" : "DECLINED",
+          reason ?? "",
+        );
+        return NextResponse.json({ ok: true });
+      }
+    }
     const match = path.match(/^transfers\/([^/]+)(\/pdf)?$/);
     if (match) {
       const t = await db.transfer.findUnique({
@@ -518,6 +646,7 @@ async function handle(
         include: {
           creator: { select: { name: true } },
           qbmEntry: { select: { reference: true, enteredAt: true } },
+          request: { select: { id: true, number: true } },
         },
       });
       if (!t) throw new HttpError(404, "Transfer not found");
@@ -811,7 +940,7 @@ async function handle(
             accessCode: z.string().trim().regex(chosenCodePattern),
             menus: z
               .array(z.enum(menus))
-              .max(5)
+              .max(menus.length)
               .default([...menus]),
             role: z.enum(["ADMIN", "STAFF"]),
             locationIds: z.array(z.string()),
@@ -846,7 +975,7 @@ async function handle(
       const id = path.split("/")[1];
       const v = z
         .object({
-          menus: z.array(z.enum(menus)).max(5).optional(),
+          menus: z.array(z.enum(menus)).max(menus.length).optional(),
           accessCode: z.string().trim().regex(chosenCodePattern).optional(),
           revokeCode: z.boolean().optional(),
           name: z.string().min(1).max(100).optional(),
@@ -996,29 +1125,35 @@ async function handle(
       // Ids mean nothing to a reader; name every person, transfer, location
       // and product an entry points at.
       const ids = [...new Set(items.flatMap((a) => [a.actor, a.target]))];
-      const [users, transfers, locations, products] = await Promise.all([
-        db.user.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, name: true },
-        }),
-        db.transfer.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, number: true },
-        }),
-        db.location.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, name: true },
-        }),
-        db.product.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, code: true },
-        }),
-      ]);
+      const [users, transfers, locations, products, requests] =
+        await Promise.all([
+          db.user.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true },
+          }),
+          db.transfer.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, number: true },
+          }),
+          db.location.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true },
+          }),
+          db.product.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, code: true },
+          }),
+          db.stockRequest.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, number: true },
+          }),
+        ]);
       const names = new Map<string, string>([
         ...users.map((u) => [u.id, u.name] as [string, string]),
         ...transfers.map((t) => [t.id, t.number] as [string, string]),
         ...locations.map((l) => [l.id, l.name] as [string, string]),
         ...products.map((p) => [p.id, p.code] as [string, string]),
+        ...requests.map((r) => [r.id, r.number] as [string, string]),
       ]);
       return NextResponse.json({
         items: items.map((a) => ({

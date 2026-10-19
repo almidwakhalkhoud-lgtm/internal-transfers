@@ -68,7 +68,7 @@ export type Product = {
   units: string[];
   barcodes: { value: string }[];
 };
-type Line = {
+export type Line = {
   id: string;
   code: string;
   product?: Product;
@@ -92,50 +92,15 @@ const blank = (): Line => ({
   quantity: "",
   unit: "",
 });
-export function TransferForm({
-  initialKey,
-  initialLineId,
-}: {
-  initialKey: string;
-  initialLineId: string;
-}) {
-  const { t } = useBuzz();
-  const [locations, setLocations] = useState<
-    { id: string; name: string; mine: boolean }[]
-  >([]);
-  const own = locations.filter((l) => l.mine);
-  const name = (id: string) => locations.find((l) => l.id === id)?.name;
-  const [sourceId, setSource] = useState("");
-  const [destinationId, setDestination] = useState("");
-  const [date, setDate] = useState(() =>
-    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }),
-  );
-  const [remarks, setRemarks] = useState("");
+// The code → quantity → unit entry table shared by new transfers and requests.
+export function useLines(initialLineId: string) {
   const [lines, setLines] = useState<Line[]>([
     { id: initialLineId, code: "", quantity: "", unit: "" },
   ]);
-  const [key, setKey] = useState(initialKey);
-  const [number, setNumber] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [review, setReview] = useState(false);
   const [duplicate, setDuplicate] = useState<{
     id: string;
     existingId: string;
     product: Product;
-  } | null>(null);
-  const [success, setSuccess] = useState<{
-    id: string;
-    number: string;
-    pdfReady: boolean;
-  } | null>(null);
-  const [drafts, setDrafts] = useState<
-    { id: string; number: string; data: DraftData }[]
-  >([]);
-  const [deleting, setDeleting] = useState<{
-    id: string;
-    number: string;
   } | null>(null);
   const latest = useRef(lines);
   const pendingFocus = useRef<string | null>(null);
@@ -160,16 +125,6 @@ export function TransferForm({
       requests.clear();
     };
   }, []);
-  const data = { sourceId, destinationId, date, remarks, lines };
-  // The reserved counter is fixed; its letters follow the chosen route.
-  const liveNumber =
-    number &&
-    numberFor(
-      sequenceOf(number),
-      name(sourceId) && name(destinationId)
-        ? routeCode(name(sourceId)!, name(destinationId)!)
-        : "",
-    );
   const focus = (id: string, field: string) => {
     pendingFocus.current = `${field}-${id}`;
     const control = document.getElementById(pendingFocus.current) as
@@ -179,27 +134,6 @@ export function TransferForm({
       if (document.activeElement === control) pendingFocus.current = null;
     }
   };
-  const loadDrafts = useCallback(
-    () =>
-      api<{ id: string; number: string; data: DraftData }[]>("drafts")
-        .then(setDrafts)
-        .catch((e) => setError(e.message)),
-    [],
-  );
-  useEffect(() => {
-    api<{ id: string; name: string; active: boolean; mine: boolean }[]>(
-      "locations",
-    )
-      .then((rows) => {
-        const active = rows.filter((l) => l.active);
-        setLocations(active);
-        // A user tied to one location always transfers from it.
-        const mine = active.filter((l) => l.mine);
-        if (mine.length === 1) setSource(mine[0].id);
-      })
-      .catch((e) => setError(e.message));
-    loadDrafts();
-  }, [loadDrafts]); // initial server state
   const update = useCallback(
     (id: string, patch: Partial<Line>) =>
       setLines((rows) =>
@@ -292,6 +226,91 @@ export function TransferForm({
     (l) => l.product && quantity.safeParse(l.quantity).success,
   );
   const total = formatTotal(totalQuantity(validLines));
+  return {
+    lines,
+    setLines,
+    update,
+    remove,
+    lookup,
+    advance,
+    focus,
+    duplicate,
+    setDuplicate,
+    validLines,
+    total,
+  };
+}
+export type LineEditor = ReturnType<typeof useLines>;
+export function TransferForm({
+  initialKey,
+  initialLineId,
+}: {
+  initialKey: string;
+  initialLineId: string;
+}) {
+  const { t } = useBuzz();
+  const editor = useLines(initialLineId);
+  const { lines, setLines, validLines, total } = editor;
+  const [locations, setLocations] = useState<
+    { id: string; name: string; mine: boolean }[]
+  >([]);
+  const own = locations.filter((l) => l.mine);
+  const name = (id: string) => locations.find((l) => l.id === id)?.name;
+  const [sourceId, setSource] = useState("");
+  const [destinationId, setDestination] = useState("");
+  const [date, setDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }),
+  );
+  const [remarks, setRemarks] = useState("");
+  const [key, setKey] = useState(initialKey);
+  const [number, setNumber] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [review, setReview] = useState(false);
+  const [success, setSuccess] = useState<{
+    id: string;
+    number: string;
+    pdfReady: boolean;
+  } | null>(null);
+  const [drafts, setDrafts] = useState<
+    { id: string; number: string; data: DraftData }[]
+  >([]);
+  const [deleting, setDeleting] = useState<{
+    id: string;
+    number: string;
+  } | null>(null);
+  const data = { sourceId, destinationId, date, remarks, lines };
+  // The reserved counter is fixed; its letters follow the chosen route.
+  const liveNumber =
+    number &&
+    numberFor(
+      sequenceOf(number),
+      name(sourceId) && name(destinationId)
+        ? routeCode(name(sourceId)!, name(destinationId)!)
+        : "",
+    );
+  const loadDrafts = useCallback(
+    () =>
+      api<{ id: string; number: string; data: DraftData }[]>("drafts")
+        .then(setDrafts)
+        .catch((e) => setError(e.message)),
+    [],
+  );
+  useEffect(() => {
+    api<{ id: string; name: string; active: boolean; mine: boolean }[]>(
+      "locations",
+    )
+      .then((rows) => {
+        const active = rows.filter((l) => l.active);
+        setLocations(active);
+        // A user tied to one location always transfers from it.
+        const mine = active.filter((l) => l.mine);
+        if (mine.length === 1) setSource(mine[0].id);
+      })
+      .catch((e) => setError(e.message));
+    loadDrafts();
+  }, [loadDrafts]); // initial server state
   async function save() {
     const result = await api<{ number: string }>("drafts", { id: key, data });
     setNumber(result.number);
@@ -526,81 +545,7 @@ export function TransferForm({
             </Field>
           </div>
         </Card>
-        <Card className="overflow-visible">
-          <CardHeader index="02" title={t("Transfer items")}>
-            <span className="rounded-md border border-line px-1.5 text-xs text-subtle">
-              {validLines.length}
-            </span>
-          </CardHeader>
-          <div className={table.wrap}>
-            <table className={table.table}>
-              <thead className={table.head}>
-                <tr>
-                  <th className={cx(table.th, "w-12")}>#</th>
-                  <th className={cx(table.th, "w-56")}>
-                    {t("Code / Barcode")}
-                  </th>
-                  <th className={table.th}>{t("Product description")}</th>
-                  <th className={cx(table.th, "w-28")}>{t("Quantity")}</th>
-                  <th className={cx(table.th, "w-36")}>{t("Unit")}</th>
-                  <th
-                    className={cx(table.th, "w-24")}
-                    aria-label={t("Actions")}
-                  />
-                </tr>
-              </thead>
-              <tbody className={table.body}>
-                {lines.map((line, index) => (
-                  <EntryRow
-                    key={line.id}
-                    line={line}
-                    index={index}
-                    update={update}
-                    lookup={lookup}
-                    advance={advance}
-                    remove={remove}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-line px-2 py-1 md:px-4">
-            <button
-              type="button"
-              className={cx(linkButton, "gap-2 px-2")}
-              onClick={() => {
-                const row = blank();
-                setLines((rows) => [...rows, row]);
-                focus(row.id, "code");
-              }}
-            >
-              <Plus size={18} />
-              {t("Add item")}
-            </button>
-            <span className="hidden items-center gap-1.5 text-xs text-subtle lg:flex">
-              {t("Code / Barcode")}
-              <ArrowRight size={12} className="rtl:-scale-x-100" />
-              {t("Quantity")}
-              <ArrowRight size={12} className="rtl:-scale-x-100" />
-              {t("Unit")}
-              <ArrowRight size={12} className="rtl:-scale-x-100" />
-              {t("Next item")}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-line bg-zinc-50/60 px-4 py-3 text-sm text-subtle md:px-6">
-            <span>
-              {validLines.length} {t("items")}
-            </span>
-            <span className="flex items-center gap-3">
-              {t("Total quantity")}
-              <strong className="text-lg text-ink tabular-nums" dir="ltr">
-                {Number(total).toLocaleString("en", {
-                  maximumFractionDigits: 3,
-                })}
-              </strong>
-            </span>
-          </div>
-        </Card>
+        <ItemsCard editor={editor} index="02" title="Transfer items" />
         <p className="m-0 flex items-start gap-2 text-xs leading-relaxed text-subtle">
           <FileCheck2 size={16} className="shrink-0" />
           {t(
@@ -761,44 +706,135 @@ export function TransferForm({
           </div>
         </Modal>
       )}
-      {duplicate && (
-        <Modal
-          title="Product already added"
-          onClose={() => {
-            update(duplicate.id, { code: "", product: undefined, unit: "" });
+      <DuplicateDialog editor={editor} />
+    </>
+  );
+}
+export function ItemsCard({
+  editor,
+  index,
+  title,
+}: {
+  editor: LineEditor;
+  index: string;
+  title: string;
+}) {
+  const { t } = useBuzz();
+  const { lines, setLines, update, lookup, advance, remove, focus } = editor;
+  const { validLines, total } = editor;
+  return (
+    <Card className="overflow-visible">
+      <CardHeader index={index} title={t(title)}>
+        <span className="rounded-md border border-line px-1.5 text-xs text-subtle">
+          {validLines.length}
+        </span>
+      </CardHeader>
+      <div className={table.wrap}>
+        <table className={table.table}>
+          <thead className={table.head}>
+            <tr>
+              <th className={cx(table.th, "w-12")}>#</th>
+              <th className={cx(table.th, "w-56")}>{t("Code / Barcode")}</th>
+              <th className={table.th}>{t("Product description")}</th>
+              <th className={cx(table.th, "w-28")}>{t("Quantity")}</th>
+              <th className={cx(table.th, "w-36")}>{t("Unit")}</th>
+              <th className={cx(table.th, "w-24")} aria-label={t("Actions")} />
+            </tr>
+          </thead>
+          <tbody className={table.body}>
+            {lines.map((line, index) => (
+              <EntryRow
+                key={line.id}
+                line={line}
+                index={index}
+                update={update}
+                lookup={lookup}
+                advance={advance}
+                remove={remove}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-line px-2 py-1 md:px-4">
+        <button
+          type="button"
+          className={cx(linkButton, "gap-2 px-2")}
+          onClick={() => {
+            const row = blank();
+            setLines((rows) => [...rows, row]);
+            focus(row.id, "code");
+          }}
+        >
+          <Plus size={18} />
+          {t("Add item")}
+        </button>
+        <span className="hidden items-center gap-1.5 text-xs text-subtle lg:flex">
+          {t("Code / Barcode")}
+          <ArrowRight size={12} className="rtl:-scale-x-100" />
+          {t("Quantity")}
+          <ArrowRight size={12} className="rtl:-scale-x-100" />
+          {t("Unit")}
+          <ArrowRight size={12} className="rtl:-scale-x-100" />
+          {t("Next item")}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-line bg-zinc-50/60 px-4 py-3 text-sm text-subtle md:px-6">
+        <span>
+          {validLines.length} {t("items")}
+        </span>
+        <span className="flex items-center gap-3">
+          {t("Total quantity")}
+          <strong className="text-lg text-ink tabular-nums" dir="ltr">
+            {Number(total).toLocaleString("en", {
+              maximumFractionDigits: 3,
+            })}
+          </strong>
+        </span>
+      </div>
+    </Card>
+  );
+}
+export function DuplicateDialog({ editor }: { editor: LineEditor }) {
+  const { t } = useBuzz();
+  const { duplicate, setDuplicate, update, setLines, focus } = editor;
+  if (!duplicate) return null;
+  return (
+    <Modal
+      title="Product already added"
+      onClose={() => {
+        update(duplicate.id, { code: "", product: undefined, unit: "" });
+        setDuplicate(null);
+      }}
+    >
+      <p className="mt-0 mb-1 font-semibold" dir="auto">
+        {duplicate.product.description}
+      </p>
+      <p className="m-0 text-sm text-muted">
+        {t("Resolve this duplicate before continuing.")}
+      </p>
+      <div className={modalActions}>
+        <Button
+          onClick={() => {
+            setLines((rows) => rows.filter((l) => l.id !== duplicate.id));
+            focus(duplicate.existingId, "qty");
             setDuplicate(null);
           }}
         >
-          <p className="mt-0 mb-1 font-semibold" dir="auto">
-            {duplicate.product.description}
-          </p>
-          <p className="m-0 text-sm text-muted">
-            {t("Resolve this duplicate before continuing.")}
-          </p>
-          <div className={modalActions}>
-            <Button
-              onClick={() => {
-                setLines((rows) => rows.filter((l) => l.id !== duplicate.id));
-                focus(duplicate.existingId, "qty");
-                setDuplicate(null);
-              }}
-            >
-              {t("Update existing quantity")}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                update(duplicate.id, { duplicateAccepted: true });
-                focus(duplicate.id, "qty");
-                setDuplicate(null);
-              }}
-            >
-              {t("Keep separate row")}
-            </Button>
-          </div>
-        </Modal>
-      )}
-    </>
+          {t("Update existing quantity")}
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() => {
+            update(duplicate.id, { duplicateAccepted: true });
+            focus(duplicate.id, "qty");
+            setDuplicate(null);
+          }}
+        >
+          {t("Keep separate row")}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 const EntryRow = memo(function EntryRow({

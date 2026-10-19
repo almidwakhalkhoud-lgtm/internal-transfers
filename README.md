@@ -62,6 +62,14 @@ Source exports are kept in ignored `data/sources/`. Source hashes, import counts
 
 Confirmation is separate from approval. Every confirmed transfer initially has approval `PENDING`. Administrators can approve/reject pending records and mark approved records received. Document fields remain immutable. Corrections require a new transfer with an explicit reference in its remarks; there is no silent editing of confirmed documents. Administrators can delete a confirmed transfer from its detail page with an optional reason; the audit log keeps a full snapshot (number, route, dates, creator, approval, remarks, lines, total and PDF hash). Staff cannot delete confirmed transfers. No external stock balances or ERP records are modified.
 
+## Requests (طلبیه)
+
+A location that needs items from another one opens **Requests → New request**, chooses the location to ask (**Request from**) and its own location (**Deliver to**), and enters codes, quantities and units with the same keyboard flow as a new transfer. Requests are numbered `REQ-0001`, `REQ-0002`, … on their own counter.
+
+The asked location sees the request under **Requests to us** marked *Awaiting your reply*. For each line it types the quantity it can send (it starts at the requested quantity and may be lower or higher), and marks lines it does not have as **Not available**; a line can be restored before confirming. **Save progress** keeps this without sending anything. **Confirm and create transfer** then, in one transaction, creates a normal confirmed transfer from the asked location to the requester with only the available lines and the entered quantities, takes the next number on the shared transfer counter, records `Request REQ-…` in its remarks and closes the request as *Fulfilled*. The same screen offers the PDF and WhatsApp sharing, and the transfer follows the usual approval flow. The requester sees requested and sent quantities side by side, with a link to the transfer.
+
+Before it is fulfilled, the requester can **Cancel** a request and the asked location can **Decline** it, each with an optional reason. Only users assigned to the asked location (or administrators) can fill, save or decline; only the requester's location, its creator or administrators can cancel. Every create, fulfil, cancel and decline is audited. The **Requests** menu is granted per user under **Users → Edit**; the migration adds it to existing users who already have **New transfer**.
+
 ## PDF and WhatsApp
 
 PDFs use a real Chromium print pipeline, not a screenshot. The template follows the supplied `MA-3210.pdf` structure: company header, transfer information, Item / Description / Quantity / Unit table, quantity total and employee/manager signature/date fields. Output is A4 with repeating table headings and page numbers. Original multilingual descriptions are preserved and Yekan Bakh is embedded. Registered printable barcodes are rendered as Code 128 with quiet zones.
