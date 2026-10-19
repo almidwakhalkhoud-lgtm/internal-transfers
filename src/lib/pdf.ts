@@ -43,9 +43,37 @@ async function acquirePdfSlot() {
     else activeJobs--;
   };
 }
+// QBM prints dates as 18-Oct-26.
+const months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+function qbmDate(value: Date | string) {
+  const [y, m, d] = String(value instanceof Date ? value.toISOString() : value)
+    .slice(0, 10)
+    .split("-");
+  return `${d}-${months[Number(m) - 1]}-${y.slice(2)}`;
+}
+function signedTime(value: Date) {
+  const part = (type: string) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Dubai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(value)
+      .find((p) => p.type === type)!.value;
+  return `${qbmDate(`${part("year")}-${part("month")}-${part("day")}`)} ${part("hour")}:${part("minute")}`;
+}
+// The page copies the QBM transfer printout: US Letter, the same field and
+// column positions (in points, measured from a QBM PDF), centered cells and a
+// table that runs down to the total and the two signature rows.
 export async function documentHtml(t: DocumentData) {
-  const font = await readFile(
-    path.join(process.cwd(), "public/fonts/YekanBakh-Regular.woff2"),
+  const [yekan, arimo] = await Promise.all(
+    ["YekanBakh-Regular.woff2", "Arimo-Regular.woff2"].map((name) =>
+      readFile(path.join(process.cwd(), "public/fonts", name)),
+    ),
   );
   const rows = await Promise.all(
     t.lines.map(async (l) => {
@@ -55,26 +83,70 @@ export async function documentHtml(t: DocumentData) {
             bcid: "code128",
             text: code,
             scale: 3,
-            height: 9,
+            height: 6,
             includetext: true,
-            textsize: 9,
-            paddingwidth: 12,
-            paddingheight: 3,
+            textxalign: "left",
+            textsize: 8,
             backgroundcolor: "FFFFFF",
           })
         : null;
-      return `<tr><td class="code">${esc(l.code)}${barcode ? `<img alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td dir="auto">${esc(l.description)}${l.note ? `<div class="note" dir="auto">${esc(l.note)}</div>` : ""}</td><td class="num">${esc(l.quantity)}</td><td dir="auto">${esc(l.unit)}</td></tr>`;
+      return `<tr><td>${esc(l.code)}${barcode ? `<img class="barcode" alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td><div dir="auto">${esc(l.description)}</div>${code ? `<div>${esc(code)}</div>` : ""}${l.note ? `<div class="note" dir="auto">${esc(l.note)}</div>` : ""}</td><td class="fit">${esc(l.quantity)}</td><td class="fit" dir="auto">${esc(l.unit)}</td></tr>`;
     }),
   );
-  const signature = (side: string, label: string, place: string) => {
+  const signature = (side: string, label: string) => {
     const s = t.signatures?.find((x) => x.side === side);
-    return `<div class="signature"><div>${label}: <b dir="auto">${esc(place)}</b></div>${
+    return `<div class="sign${s ? " signed" : ""}"><span class="label">${label} :</span>${
       s
-        ? `<img class="sign" alt="" src="data:image/png;base64,${s.image.toString("base64")}"><div dir="auto">${esc(s.signerName)}</div><div>Date: ${esc(s.signedAt.toLocaleString("en-GB", { timeZone: "Asia/Dubai", dateStyle: "medium", timeStyle: "short" }))}</div>`
-        : `<div class="blank"></div><div>Name: __________________________</div><div>Date: __________________________</div>`
-    }</div>`;
+        ? `<img alt="" src="data:image/png;base64,${s.image.toString("base64")}"><span class="name" dir="auto">${esc(s.signerName)}</span>`
+        : ""
+    }<span class="date">Date:</span><span class="box">${s ? esc(signedTime(s.signedAt)) : ""}</span></div>`;
   };
-  return `<!doctype html><html><head><meta charset="utf-8"><style>@font-face{font-family:Yekan;src:url(data:font/woff2;base64,${font.toString("base64")})} @page{size:A4;margin:15mm 12mm 20mm}*{box-sizing:border-box}body{font:11px Arial,Yekan,"Segoe UI",sans-serif;color:#181818}h1{font-size:20px;margin:0 0 5px}.title{text-align:center;margin-bottom:23px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #555;padding:6px;vertical-align:middle;overflow-wrap:anywhere}th{background:#fff;text-align:center}td{border-top:0;border-bottom:0;text-align:center}tbody{border-bottom:1px solid #555}thead{display:table-header-group}tr{break-inside:avoid}img{display:block;max-width:100%;width:auto;height:45px;margin-top:6px}.code{direction:ltr;font-size:10px}.note{margin-top:4px;font-size:10px;font-style:italic;color:#444}.num{text-align:right;direction:ltr}.total{font-weight:bold;text-align:right;padding:14px 0}.signatures{break-inside:avoid;display:grid;grid-template-columns:1fr 1fr;gap:35px;margin-top:32px}.signature{line-height:1.8}.signature img.sign{height:70px;max-width:100%;margin:6px 0 2px;border-bottom:1px solid #555}.blank{height:70px;border-bottom:1px solid #555;margin:6px 0 2px}footer{margin-top:22px;color:#666;font-size:9px}</style></head><body><div class="title"><h1>MEHDI ALI TRADING Co.</h1><div>INTERNAL INVENTORY TRANSFER</div></div><div class="meta"><div>Transfer No: <b>${esc(t.number)}</b></div><div>Date: ${esc(String(t.date).slice(0, 10))}</div><div>From: <b dir="auto">${esc(t.source)}</b></div><div>To: <b dir="auto">${esc(t.destination)}</b></div><div>Status: Confirmed</div><div>Employee: ${esc(t.employee)}</div></div><table><colgroup><col style="width:25%"><col style="width:52%"><col style="width:14%"><col style="width:9%"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}</tbody></table><div class="total">Total transferred quantity: ${esc(t.total)}</div>${t.remarks ? `<p dir="auto">Remarks: ${esc(t.remarks)}</p>` : ""}<div class="signatures">${signature("SOURCE", "Sender signature", t.source)}${signature("DESTINATION", "Receiver signature", t.destination)}</div><footer>BUZZ · ${esc(t.number)} · Saved transfer snapshot</footer></body></html>`;
+  const at = (left: number, top: number, text: string) =>
+    `<div class="at" style="left:${left}pt;top:${top}pt" dir="auto">${esc(text)}</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Arimo;src:url(data:font/woff2;base64,${arimo.toString("base64")})}
+@font-face{font-family:Yekan;src:url(data:font/woff2;base64,${yekan.toString("base64")})}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{width:554.4pt;font:8.3pt/1.15 Arimo,Yekan,sans-serif;color:#000}
+.head{position:relative;height:134.6pt}
+h1{position:absolute;inset:0 0 auto;margin:0;font-size:18pt;font-weight:normal;line-height:1.2;text-align:center}
+.at{position:absolute;white-space:nowrap}
+.remarks{position:absolute;left:52.6pt;top:108.7pt;width:293pt;height:21.6pt;border:.72pt solid #000;padding:2pt 4pt;overflow:hidden}
+table{width:100%;border-collapse:collapse;table-layout:fixed;border:.72pt solid #000}
+thead{display:table-header-group}
+th{font-size:9pt;font-weight:normal;height:13pt;padding:0 2pt;border:.72pt solid #000}
+td{padding:1.6pt 3pt;border-left:.72pt solid #000;border-right:.72pt solid #000;text-align:center;vertical-align:middle;overflow-wrap:anywhere}
+tr{break-inside:avoid}
+td.fit{white-space:nowrap;overflow:hidden;overflow-wrap:normal}
+.barcode{display:block;height:21pt;width:auto;max-width:100%;margin:1pt 0 0 4pt}
+.note{font-style:italic}
+tr.fill td{padding:0}
+.total{text-align:right;padding:2pt 2.4pt 0;height:16pt}
+.sign{position:relative;height:20pt;break-inside:avoid}
+.sign.signed{height:34pt}
+.sign .label{position:absolute;left:6pt;bottom:6pt;text-decoration:underline}
+.sign img{position:absolute;left:112pt;bottom:2pt;height:30pt;max-width:150pt}
+.sign .name{position:absolute;left:268pt;bottom:6pt;max-width:68pt;overflow:hidden;white-space:nowrap}
+.sign .date{position:absolute;left:340pt;bottom:6pt}
+.sign .box{position:absolute;left:441pt;bottom:2pt;width:113.4pt;height:14.4pt;border:.72pt solid #000;text-align:center;line-height:13pt}
+</style></head><body><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(416, 83, t.employee)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody></table><div class="total">${esc(t.total)}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
+}
+// Fit a long unit or quantity on one line, then stretch the table down to
+// the total and signatures on a one-page transfer, as QBM does.
+function layoutScript(pageHeight: number) {
+  for (const cell of document.querySelectorAll<HTMLElement>("td.fit")) {
+    let size = 8.3;
+    while (cell.scrollWidth > cell.clientWidth && size > 5) {
+      size -= 0.3;
+      cell.style.fontSize = `${size}pt`;
+    }
+  }
+  const height = document.body.scrollHeight;
+  const fill = document.querySelector<HTMLElement>("tr.fill td")!;
+  if (height <= pageHeight)
+    fill.style.height = `${Math.floor(pageHeight - height - 1)}px`;
+  return height > pageHeight;
 }
 // Serverless hosts have no Playwright browser download; they use the
 // compressed Chromium build from @sparticuz/chromium instead.
@@ -96,13 +168,27 @@ export async function generatePdf(t: DocumentData) {
     browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setContent(await documentHtml(t), { waitUntil: "load" });
+    // Letter is 792pt tall. Within the 18pt top and 24pt bottom margins, QBM
+    // ends its last signature row 14pt early; heights go in CSS pixels.
+    await page.setViewportSize({ width: 816, height: 1056 });
+    const pages = await page.evaluate(
+      layoutScript,
+      ((792 - 42 - 14) * 96) / 72,
+    );
+    // Page numbers only when the items run onto more than one page.
     return await page.pdf({
-      format: "A4",
+      format: "Letter",
       printBackground: true,
-      displayHeaderFooter: true,
+      displayHeaderFooter: pages,
       headerTemplate: "<span></span>",
-      footerTemplate: `<div style="width:100%;text-align:center;font-size:8px;color:#777">${esc(t.number)} · <span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
-      margin: { top: "15mm", bottom: "20mm", left: "12mm", right: "12mm" },
+      footerTemplate: `<div style="width:100%;text-align:center;font-size:7px;color:#555">${esc(t.number)} · <span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
+      // 18pt, 24pt, 23pt and 34.6pt; Playwright takes no point units.
+      margin: {
+        top: "24px",
+        bottom: "32px",
+        left: "30.67px",
+        right: "46.13px",
+      },
     });
   } finally {
     await browser?.close();
