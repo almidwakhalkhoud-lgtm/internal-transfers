@@ -30,6 +30,52 @@ export const transferInput = z
     (v) => v.sourceId !== v.destinationId,
     "Source and destination must differ",
   );
+// A request names the products and quantities a location asks another for.
+export const requestInput = z
+  .object({
+    requesterId: z.string().min(1),
+    supplierId: z.string().min(1),
+    remarks: z.string().max(2000),
+    lines: z
+      .array(
+        z.object({
+          productId: z.string().min(1),
+          quantity,
+          unit: z.string().max(100),
+          note: z.string().trim().max(500).optional(),
+          description: z.string().trim().min(1).max(2000).optional(),
+        }),
+      )
+      .min(1)
+      .max(500),
+  })
+  .refine(
+    (v) => v.requesterId !== v.supplierId,
+    "Source and destination must differ",
+  );
+// What the supplier decides per line, in the request's line order: the
+// quantity it sends, or that it does not have the item.
+export const supplyInput = z.object({
+  lines: z
+    .array(
+      z.union([
+        z.object({ supplied: quantity, removed: z.literal(false).optional() }),
+        z.object({ removed: z.literal(true) }),
+      ]),
+    )
+    .max(500),
+  remarks: z.string().max(2000).optional(),
+});
+export type RequestLine = {
+  productId: string;
+  code: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  note?: string;
+  supplied?: string;
+  removed?: boolean;
+};
 export type SnapshotLine = {
   code: string;
   description: string;
@@ -69,6 +115,22 @@ export function allowedTransition(from: string, to: string) {
   return (
     (from === "PENDING" && ["APPROVED", "REJECTED"].includes(to)) ||
     (from === "APPROVED" && to === "RECEIVED")
+  );
+}
+// A request is seen only by the person who made it, the people working at
+// the location it asks, and administrators. Only that location fills it.
+export function canSeeRequest(
+  user: { id: string; role: string; locations: { id: string }[] },
+  r: { creatorId: string; supplierId: string },
+) {
+  return r.creatorId === user.id || canSupply(user, r);
+}
+export function canSupply(
+  user: { role: string; locations: { id: string }[] },
+  r: { supplierId: string },
+) {
+  return (
+    user.role === "ADMIN" || user.locations.some((l) => l.id === r.supplierId)
   );
 }
 export function canAccess(

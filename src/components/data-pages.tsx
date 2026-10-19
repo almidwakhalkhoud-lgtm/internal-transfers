@@ -22,6 +22,7 @@ import {
   Plus,
 } from "lucide-react";
 import { api } from "@/lib/client";
+import { hasMenu } from "@/lib/permissions";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
 import {
   Button,
@@ -556,7 +557,12 @@ export function Pagination({
 export function DetailPage({ id }: { id: string }) {
   const { t, user } = useBuzz();
   const { data, error, load } = useLoad<
-    Summary & { lines: SnapshotLine[]; remarks: string; pdfReady: boolean }
+    Summary & {
+      lines: SnapshotLine[];
+      remarks: string;
+      pdfReady: boolean;
+      request: { id: string; number: string } | null;
+    }
   >(`transfers/${id}`);
   const [err, setErr] = useState("");
   const router = useRouter();
@@ -606,6 +612,24 @@ export function DetailPage({ id }: { id: string }) {
               <ArrowRight size={15} className="rtl:-scale-x-100" />
               <span className="font-medium text-ink">{data.destination}</span>
             </div>
+            {data.request && (
+              <p className="mt-2 mb-0 text-sm text-muted">
+                {t("From request")}:{" "}
+                {hasMenu(user, "requests") ? (
+                  <Link
+                    className="font-semibold text-brand hover:underline"
+                    href={`/requests/${data.request.id}`}
+                    dir="ltr"
+                  >
+                    {data.request.number}
+                  </Link>
+                ) : (
+                  <strong className="text-ink" dir="ltr">
+                    {data.request.number}
+                  </strong>
+                )}
+              </p>
+            )}
             {user.role === "ADMIN" && (
               <div className="mt-4 grid grid-cols-2 gap-2 border-t border-line pt-4 sm:flex sm:flex-wrap">
                 {(data.approval === "PENDING"

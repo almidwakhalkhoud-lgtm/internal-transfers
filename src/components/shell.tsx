@@ -13,6 +13,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowLeftRight,
+  ClipboardList,
   LayoutDashboard,
   Package,
   MapPin,
@@ -108,6 +109,7 @@ export function Shell({
   const nav = [
     ["Overview", "/dashboard", LayoutDashboard],
     ["New transfer", "/new-transfer", ArrowLeftRight],
+    ["Requests", "/requests", ClipboardList],
     ["Transfer history", "/transfers", History],
     ["Products", "/products", Package],
     ["Locations", "/locations", MapPin],
@@ -365,6 +367,9 @@ const statusTone: Record<string, string> = {
   RECEIVED: "border-emerald-100 bg-emerald-50 text-emerald-700",
   CONFIRMED: "border-emerald-100 bg-emerald-50 text-emerald-700",
   REJECTED: "border-red-100 bg-red-50 text-red-700",
+  OPEN: "border-amber-100 bg-amber-50 text-amber-800",
+  FULFILLED: "border-emerald-100 bg-emerald-50 text-emerald-700",
+  DECLINED: "border-red-100 bg-red-50 text-red-700",
 };
 export function Status({ value }: { value: string }) {
   const { t } = useBuzz();

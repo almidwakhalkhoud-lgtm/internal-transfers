@@ -170,6 +170,7 @@ type UserRecord = {
 const menuLabels: Record<string, string> = {
   dashboard: "Overview",
   "new-transfer": "New transfer",
+  requests: "Requests",
   transfers: "Transfer history",
   products: "Products",
   locations: "Locations",

@@ -8,7 +8,7 @@ export default async function setup() {
   const db = new PrismaClient();
   // The reset is confined to a fixed, dedicated test database.
   await db.$executeRawUnsafe(
-    'TRUNCATE "Session", "LoginAttempt", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence" CASCADE',
+    'TRUNCATE "Session", "LoginAttempt", "StockRequest", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence" CASCADE',
   );
   const source = new PrismaClient({
     datasourceUrl: process.env.BUZZ_PRODUCTION_DATABASE_URL,

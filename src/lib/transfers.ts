@@ -18,6 +18,73 @@ import { notifyAdmins } from "./push";
 type User = NonNullable<
   Awaited<ReturnType<typeof import("./auth").currentUser>>
 >;
+// Writes a confirmed transfer and its audit entry inside the caller's
+// transaction. Both confirmation and request fulfilment end here.
+export async function insertTransfer(
+  tx: Prisma.TransactionClient,
+  user: User,
+  t: {
+    key: string;
+    sequence: number;
+    source: { id: string; name: string };
+    destination: { id: string; name: string };
+    date: Date;
+    remarks: string;
+    lines: SnapshotLine[];
+    detail?: Record<string, string>;
+  },
+) {
+  const transfer = await tx.transfer.create({
+    data: {
+      key: t.key,
+      number: numberFor(
+        t.sequence,
+        routeCode(t.source.name, t.destination.name),
+      ),
+      creatorId: user.id,
+      creatorName: user.name,
+      sourceId: t.source.id,
+      destinationId: t.destination.id,
+      source: t.source.name,
+      destination: t.destination.name,
+      date: t.date,
+      remarks: t.remarks,
+      lines: t.lines,
+      total: formatTotal(totalQuantity(t.lines)),
+    },
+  });
+  await tx.audit.create({
+    data: {
+      actor: user.id,
+      action: "TRANSFER_CONFIRMED",
+      target: transfer.id,
+      detail: {
+        number: transfer.number,
+        from: transfer.source,
+        to: transfer.destination,
+        lines: t.lines.length,
+        total: transfer.total.toString(),
+        ...t.detail,
+      },
+    },
+  });
+  return transfer;
+}
+export async function announceTransfer(t: {
+  id: string;
+  number: string;
+  source: string;
+  destination: string;
+  creatorName: string;
+  lines: Prisma.JsonValue;
+  total: Prisma.Decimal;
+}) {
+  await notifyAdmins({
+    title: `${t.number} · ${t.source} → ${t.destination}`,
+    body: `${t.creatorName} · ${(t.lines as SnapshotLine[]).length} items · ${t.total}`,
+    url: `/transfers/${t.id}`,
+  }).catch((e) => console.error("Transfer notification failed", e));
+}
 export async function confirmTransfer(user: User, input: unknown) {
   const parsed = transferInput.safeParse(input);
   if (!parsed.success)
@@ -83,42 +150,14 @@ export async function confirmTransfer(user: User, input: unknown) {
             ...(line.note ? { note: line.note } : {}),
           };
         });
-        const transfer = await tx.transfer.create({
-          data: {
-            key: data.key,
-            number: numberFor(
-              sequenceOf(draft.number),
-              routeCode(
-                locations.find((l) => l.id === data.sourceId)!.name,
-                locations.find((l) => l.id === data.destinationId)!.name,
-              ),
-            ),
-            creatorId: user.id,
-            creatorName: user.name,
-            sourceId: data.sourceId,
-            destinationId: data.destinationId,
-            source: locations.find((l) => l.id === data.sourceId)!.name,
-            destination: locations.find((l) => l.id === data.destinationId)!
-              .name,
-            date: new Date(data.date),
-            remarks: data.remarks,
-            lines,
-            total: formatTotal(totalQuantity(lines)),
-          },
-        });
-        await tx.audit.create({
-          data: {
-            actor: user.id,
-            action: "TRANSFER_CONFIRMED",
-            target: transfer.id,
-            detail: {
-              number: transfer.number,
-              from: transfer.source,
-              to: transfer.destination,
-              lines: lines.length,
-              total: transfer.total.toString(),
-            },
-          },
+        const transfer = await insertTransfer(tx, user, {
+          key: data.key,
+          sequence: sequenceOf(draft.number),
+          source: locations.find((l) => l.id === data.sourceId)!,
+          destination: locations.find((l) => l.id === data.destinationId)!,
+          date: new Date(data.date),
+          remarks: data.remarks,
+          lines,
         });
         await tx.draft.delete({ where: { id: data.key } });
         return transfer;
@@ -126,11 +165,7 @@ export async function confirmTransfer(user: User, input: unknown) {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
     // Only a newly confirmed transfer is announced, never a retried one.
-    await notifyAdmins({
-      title: `${created.number} · ${created.source} → ${created.destination}`,
-      body: `${created.creatorName} · ${(created.lines as SnapshotLine[]).length} items · ${created.total}`,
-      url: `/transfers/${created.id}`,
-    }).catch((e) => console.error("Transfer notification failed", e));
+    await announceTransfer(created);
     return created;
   } catch (e) {
     if (
