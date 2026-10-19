@@ -199,6 +199,8 @@ model ApiKey {
   createdAt   DateTime   @default(now())
   lastUsedAt  DateTime?
   revokedAt   DateTime?
+  // Lets the program approve a pending transfer once it is entered in QBM.
+  canApprove  Boolean    @default(false)
   qbmEntries  QbmEntry[]
 }
 

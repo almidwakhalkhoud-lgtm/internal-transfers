@@ -683,6 +683,7 @@ type ApiKeyRecord = {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  canApprove: boolean;
   _count: { qbmEntries: number };
 };
 // Keys for programs such as the QBM entry app. A new key is shown once.
@@ -690,6 +691,7 @@ function ApiKeys() {
   const { t, locale } = useBuzz();
   const { data, error, load } = useLoad<ApiKeyRecord[]>("api-keys");
   const [name, setName] = useState("QBM sync");
+  const [canApprove, setCanApprove] = useState(false);
   const [created, setCreated] = useState("");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -709,6 +711,9 @@ function ApiKeys() {
         <p className="m-0 text-sm leading-relaxed text-muted">
           {t(
             "Programs such as the QBM entry app use a key to read confirmed transfers and their items, and to mark them as entered in QBM. A key cannot change or delete anything else.",
+          )}{" "}
+          {t(
+            "A key allowed to approve may also approve a pending transfer after it has been entered in QBM.",
           )}
         </p>
         <LoadError error={error} load={load} />
@@ -723,6 +728,9 @@ function ApiKeys() {
                 <Badge tone={k.revokedAt ? "bad" : "ok"}>
                   {t(k.revokedAt ? "Revoked" : "Active")}
                 </Badge>
+                {k.canApprove && !k.revokedAt && (
+                  <Badge tone="warn">{t("Can approve")}</Badge>
+                )}
               </div>
               <div className="mt-1 text-xs text-subtle" dir="ltr">
                 {k.prefix}…
@@ -732,6 +740,26 @@ function ApiKeys() {
                 {t("Transfers entered")}: {k._count.qbmEntries}
               </div>
             </div>
+            {!k.revokedAt && (
+              <button
+                type="button"
+                className={linkButton}
+                onClick={async () => {
+                  try {
+                    await api(
+                      `api-keys/${k.id}`,
+                      { canApprove: !k.canApprove },
+                      "PATCH",
+                    );
+                    load();
+                  } catch (e) {
+                    setErr((e as Error).message);
+                  }
+                }}
+              >
+                {t(k.canApprove ? "Stop approving" : "Allow approving")}
+              </button>
+            )}
             {!k.revokedAt && (
               <button
                 type="button"
@@ -763,7 +791,10 @@ function ApiKeys() {
             setBusy(true);
             setErr("");
             try {
-              const result = await api<{ key: string }>("api-keys", { name });
+              const result = await api<{ key: string }>("api-keys", {
+                name,
+                canApprove,
+              });
               setCreated(result.key);
               setCopied(false);
               load();
@@ -783,6 +814,15 @@ function ApiKeys() {
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
+          <label className={cx(checkRow, "shrink-0 whitespace-nowrap")}>
+            <input
+              type="checkbox"
+              className={checkbox}
+              checked={canApprove}
+              onChange={(e) => setCanApprove(e.target.checked)}
+            />
+            {t("Can approve")}
+          </label>
           <Button type="submit" variant="primary" disabled={busy}>
             <Plus size={16} />
             {t("Create key")}
@@ -910,6 +950,7 @@ const auditActions = [
   "QBM_ENTRY_REMOVED",
   "API_KEY_CREATED",
   "API_KEY_REVOKED",
+  "API_KEY_UPDATED",
   "TRANSFER_CONFIRMED",
   "TRANSFER_DELETED",
   "DRAFT_DELETED",
@@ -925,6 +966,11 @@ const auditActions = [
   "LOCATION_CREATED",
   "LOCATION_UPDATED",
   "SETTINGS_UPDATED",
+  "REQUEST_CREATED",
+  "REQUEST_FULFILLED",
+  "REQUEST_CANCELLED",
+  "REQUEST_DECLINED",
+  "REQUEST_DELETED",
 ];
 // English names for the stored action codes; Persian ones live in i18n.
 const actionNames: Record<string, string> = {
@@ -938,6 +984,12 @@ const actionNames: Record<string, string> = {
   QBM_ENTRY_REMOVED: "QBM entry removed",
   API_KEY_CREATED: "API key created",
   API_KEY_REVOKED: "API key revoked",
+  API_KEY_UPDATED: "API key changed",
+  REQUEST_CREATED: "Request sent",
+  REQUEST_FULFILLED: "Request filled",
+  REQUEST_CANCELLED: "Request cancelled",
+  REQUEST_DECLINED: "Request declined",
+  REQUEST_DELETED: "Request deleted",
   TRANSFER_CONFIRMED: "Transfer confirmed",
   TRANSFER_DELETED: "Transfer deleted",
   DRAFT_DELETED: "Draft deleted",

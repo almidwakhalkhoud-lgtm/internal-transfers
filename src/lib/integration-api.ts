@@ -4,11 +4,12 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
 import { audit, hash, HttpError } from "./auth";
-import type { SnapshotLine } from "./domain";
+import { allowedTransition, type SnapshotLine } from "./domain";
 
 // Read access for programs such as the QBM entry app. They send
 // `Authorization: Bearer buzz_…`; there is no cookie, session or CSRF here,
-// and a key can only list transfers and record that one was typed into QBM.
+// and a key can only list transfers and record that one was typed into QBM,
+// plus approve it afterwards when an administrator allowed that key to.
 export function newApiKey() {
   const key = `buzz_${randomBytes(32).toString("base64url")}`;
   return { key, prefix: key.slice(0, 12), hash: hash(key) };
@@ -155,6 +156,35 @@ export async function integrationApi(
       }
       return NextResponse.json(shape(await transferFor(t.id)));
     }
+  }
+  if (parts.length === 3 && parts[2] === "approve" && method === "POST") {
+    if (!key.canApprove)
+      throw new HttpError(403, "This API key may not approve transfers");
+    const t = await transferFor(parts[1]);
+    // Approval follows the QBM entry, never stands in for it.
+    if (!t.qbmEntry)
+      throw new HttpError(409, "Record the QBM entry before approving");
+    // Repeating the call is harmless.
+    if (t.approval === "APPROVED") return NextResponse.json(shape(t));
+    if (!allowedTransition(t.approval, "APPROVED"))
+      throw new HttpError(409, `Transfer is ${t.approval.toLowerCase()}`);
+    await db.$transaction(async (tx) => {
+      const result = await tx.transfer.updateMany({
+        where: { id: t.id, approval: t.approval },
+        data: { approval: "APPROVED" },
+      });
+      if (result.count !== 1)
+        throw new HttpError(409, "Status changed. Refresh and retry.");
+      await tx.audit.create({
+        data: {
+          actor: `api:${key.name}`,
+          action: "APPROVED",
+          target: t.id,
+          detail: { from: t.approval, number: t.number, key: key.name },
+        },
+      });
+    });
+    return NextResponse.json(shape(await transferFor(t.id)));
   }
   throw new HttpError(404, "Endpoint not found");
 }
