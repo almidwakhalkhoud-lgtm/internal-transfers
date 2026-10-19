@@ -90,6 +90,18 @@ describe("workflow and authorization", () => {
     expect(sequenceOf("MS-0042")).toBe(42);
     expect(sequenceOf("TRF00002")).toBe(2);
   });
+  it("numbers requests on their own counter and their transfers by route", () => {
+    expect(numberFor(7, "REQ")).toBe("REQ-0007");
+    expect(sequenceOf("REQ-0007")).toBe(7);
+    // The QBM program names the PDF from these same letters (MA-3212), so a
+    // transfer made from a request must carry them like any other.
+    expect(numberFor(12, routeCode("NEW STORE", "Main"))).toBe("NM-0012");
+    expect(numberFor(13, routeCode("NEW STORE", "VAN SALES STORE"))).toBe(
+      "NV-0013",
+    );
+    expect(numberFor(14, routeCode("VAN SALES STORE", "Main"))).toBe("VM-0014");
+    expect(numberFor(15, routeCode("Sur Shop", "Al Azaiba"))).toBe("SA-0015");
+  });
   it("separates confirmation and approval transitions", () => {
     expect(allowedTransition("PENDING", "APPROVED")).toBe(true);
     expect(allowedTransition("APPROVED", "RECEIVED")).toBe(true);

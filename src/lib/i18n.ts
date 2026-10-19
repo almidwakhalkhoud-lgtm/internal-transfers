@@ -353,6 +353,10 @@ export const fa: Record<string, string> = {
   "Current catalog value": "مقدار فعلی کاتالوگ",
   "Original source value": "مقدار اصلی منبع",
   "Next transfer number": "شماره انتقال بعدی",
+  "Request numbering": "شماره‌گذاری طلبیه",
+  "Next request number": "شماره طلبیه بعدی",
+  "Requests have their own counter, e.g. REQ-0001. The transfer made from a request is numbered like every transfer: the first letters of its source and destination and the transfer counter, e.g. NM-0012.":
+    "طلبیه‌ها شمارندهٔ خودشان را دارند، مثل REQ-0001. انتقالی که از طلبیه ساخته می‌شود مثل همهٔ انتقال‌ها شماره می‌گیرد: حرف اول مبدا و مقصد و شمارندهٔ انتقال، مثل NM-0012.",
   "Product changed. Refresh the conflict review before applying changes.":
     "محصول تغییر کرده است. پیش از اعمال تغییرات، بازبینی را تازه کنید.",
   "Product data changed. Look up the product again before confirmation.":
