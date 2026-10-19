@@ -9,7 +9,6 @@ import {
   SettingsPage,
   AuditPage,
 } from "@/components/admin-pages";
-import { SignPage } from "@/components/sign-pages";
 export default async function Page({
   params,
 }: {
@@ -39,8 +38,6 @@ export default async function Page({
       return <HistoryPage />;
     case "requests":
       return <RequestsPage />;
-    case "sign":
-      return <SignPage />;
     case "products":
       return <ProductsPage />;
     case "locations":

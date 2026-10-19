@@ -172,7 +172,6 @@ const menuLabels: Record<string, string> = {
   "new-transfer": "New transfer",
   requests: "Requests",
   transfers: "Transfer history",
-  sign: "Sign",
   products: "Products",
   locations: "Locations",
 };

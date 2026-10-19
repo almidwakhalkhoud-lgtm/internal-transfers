@@ -48,7 +48,7 @@ model User {
   locale            String             @default("en")
   accessHash        String?            @unique
   accessVerifier    String?
-  menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "sign", "products", "locations"])
+  menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "products", "locations"])
   locations         Location[]
   sessions          Session[]
   transfers         Transfer[]

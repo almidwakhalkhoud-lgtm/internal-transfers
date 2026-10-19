@@ -75,6 +75,28 @@ const summary = {
   creator: { select: { name: true } },
   qbmEntry: { select: { reference: true, enteredAt: true } },
 };
+// Transfers at the viewer's locations whose side the viewer may still sign:
+// the same rule as signableSides, as a database filter.
+function waitingForSignature(user: {
+  id: string;
+  role: string;
+  locations: { id: string }[];
+}): Prisma.TransferWhereInput {
+  const mine = user.locations.map((l) => l.id);
+  const unsigned = (side: "SOURCE" | "DESTINATION") => ({
+    ...(user.role === "ADMIN"
+      ? {}
+      : side === "SOURCE"
+        ? { sourceId: { in: mine } }
+        : { destinationId: { in: mine } }),
+    signatures: { none: { side } },
+  });
+  return {
+    approval: { not: "REJECTED" },
+    signatures: { none: { userId: user.id } },
+    OR: [unsigned("SOURCE"), unsigned("DESTINATION")],
+  };
+}
 // A signature as the pages show it, with its image ready for an <img>.
 function signatureView(s: {
   id: string;
@@ -294,8 +316,8 @@ async function handle(
             : path.endsWith("/pdf") &&
                 (hasMenu(user, "new-transfer") || hasMenu(user, "requests"))
               ? null
-              : path === "sign" || path.startsWith("sign/")
-                ? "sign"
+              : path.startsWith("sign/")
+                ? "transfers"
                 : path.startsWith("transfers")
                   ? "transfers"
                   : path === "products"
@@ -519,7 +541,10 @@ async function handle(
       const q = req.nextUrl.searchParams;
       const page = Math.max(0, Number(q.get("page")) || 0);
       const where: Prisma.TransferWhereInput = {
-        AND: [access],
+        AND: [
+          access,
+          ...(q.get("sign") === "waiting" ? [waitingForSignature(user)] : []),
+        ],
         number: { contains: q.get("q") ?? "", mode: "insensitive" },
         ...(q.get("status")
           ? {
@@ -544,14 +569,36 @@ async function handle(
             }
           : {}),
       };
+      const items = await db.transfer.findMany({
+        where,
+        select: {
+          ...summary,
+          sourceId: true,
+          destinationId: true,
+          signatures: {
+            select: { side: true, userId: true, signerName: true },
+          },
+        },
+        orderBy: { confirmedAt: "desc" },
+        take: 25,
+        skip: page * 25,
+      });
       return NextResponse.json({
-        items: await db.transfer.findMany({
-          where,
-          select: summary,
-          orderBy: { confirmedAt: "desc" },
-          take: 25,
-          skip: page * 25,
-        }),
+        items: items.map(
+          ({ sourceId, destinationId, signatures, ...rest }) => ({
+            ...rest,
+            signatures: signatures.map((s) => ({
+              side: s.side,
+              signerName: s.signerName,
+            })),
+            canSign: signableSides(user, {
+              sourceId,
+              destinationId,
+              approval: rest.approval,
+              signatures,
+            }),
+          }),
+        ),
         count: await db.transfer.count({ where }),
       });
     }
@@ -692,7 +739,7 @@ async function handle(
           signedPdf: undefined,
           pdfReady: !!pdf,
           signatures: signatures.map(signatureView),
-          canSign: hasMenu(user, "sign") ? signableSides(user, t) : [],
+          canSign: signableSides(user, t),
         });
       }
       if (method === "PATCH") {
@@ -758,100 +805,25 @@ async function handle(
         return NextResponse.json({ ok: true });
       }
     }
-    if (path === "sign" && method === "GET") {
-      // Waiting: transfers at the viewer's locations with that side unsigned.
-      // Signed: transfers the viewer has signed.
-      const q = req.nextUrl.searchParams;
-      const page = Math.max(0, Number(q.get("page")) || 0);
-      const mine = user.locations.map((l) => l.id);
-      const unsigned = (side: "SOURCE" | "DESTINATION") => ({
-        ...(user.role === "ADMIN"
-          ? {}
-          : side === "SOURCE"
-            ? { sourceId: { in: mine } }
-            : { destinationId: { in: mine } }),
-        signatures: { none: { side } },
-      });
-      const where: Prisma.TransferWhereInput =
-        q.get("tab") === "signed"
-          ? { signatures: { some: { userId: user.id } } }
-          : {
-              approval: { not: "REJECTED" },
-              signatures: { none: { userId: user.id } },
-              OR: [unsigned("SOURCE"), unsigned("DESTINATION")],
-            };
-      const items = await db.transfer.findMany({
-        where,
-        select: {
-          ...summary,
-          sourceId: true,
-          destinationId: true,
-          signatures: {
-            select: {
-              side: true,
-              userId: true,
-              signerName: true,
-              signedAt: true,
-            },
-          },
-        },
-        orderBy: { confirmedAt: "desc" },
-        take: 25,
-        skip: page * 25,
-      });
-      return NextResponse.json({
-        items: items.map(
-          ({ sourceId, destinationId, signatures, ...rest }) => ({
-            ...rest,
-            signatures: signatures.map((s) => ({
-              side: s.side,
-              signerName: s.signerName,
-              signedAt: s.signedAt,
-            })),
-            canSign: signableSides(user, {
-              sourceId,
-              destinationId,
-              approval: rest.approval,
-              signatures,
-            }),
-          }),
-        ),
-        count: await db.transfer.count({ where }),
-      });
-    }
     const signMatch = path.match(/^sign\/([^/]+)$/);
     if (signMatch) {
       const t = await db.transfer.findUnique({
         where: { id: signMatch[1] },
         select: {
-          ...summary,
+          id: true,
+          number: true,
+          source: true,
+          destination: true,
           sourceId: true,
           destinationId: true,
           creatorId: true,
-          lines: true,
-          remarks: true,
-          signatures: { orderBy: { signedAt: "asc" } },
+          approval: true,
+          signatures: { select: { side: true, userId: true } },
         },
       });
       if (!t) throw new HttpError(404, "Transfer not found");
       if (!canAccess(user, t))
         throw new HttpError(403, "Transfer access denied");
-      if (method === "GET") {
-        return NextResponse.json({
-          id: t.id,
-          number: t.number,
-          source: t.source,
-          destination: t.destination,
-          date: t.date,
-          total: t.total,
-          approval: t.approval,
-          creator: t.creator,
-          lines: t.lines,
-          remarks: t.remarks,
-          signatures: t.signatures.map(signatureView),
-          canSign: signableSides(user, t),
-        });
-      }
       if (method === "POST") {
         const input = z
           .object({

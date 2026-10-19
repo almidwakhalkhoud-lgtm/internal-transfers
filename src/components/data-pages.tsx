@@ -39,7 +39,11 @@ import {
   table,
 } from "./ui";
 import { SuccessActions, Modal, type Product } from "./transfer-form";
-import { SignaturesCard, type SignatureView } from "./sign-pages";
+import {
+  SignatureBadge,
+  SignaturesCard,
+  type SignatureView,
+} from "./signatures";
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
 import {
   validateCatalog,
@@ -56,6 +60,8 @@ type Summary = {
   approval: string;
   creator: { name: string };
   qbmEntry?: { reference: string; enteredAt: string } | null;
+  signatures?: { side: string; signerName: string }[];
+  canSign?: ("SOURCE" | "DESTINATION")[];
 };
 export function useLoad<T>(path: string) {
   const sequence = useRef(0);
@@ -181,6 +187,12 @@ export function TransferTable({ items }: { items: Summary[] }) {
                 <span className="inline-flex flex-wrap justify-end gap-1 md:justify-start">
                   <Status value={row.approval} />
                   {row.qbmEntry && <QbmBadge entry={row.qbmEntry} />}
+                  {row.signatures && (
+                    <SignatureBadge
+                      signatures={row.signatures}
+                      canSign={row.canSign ?? []}
+                    />
+                  )}
                 </span>
               </td>
               <td
@@ -346,6 +358,7 @@ export function HistoryPage() {
   const [destination, setDestination] = useState("");
   const searchParams = useSearchParams();
   const [creator, setCreator] = useState(searchParams.get("creator") ?? "");
+  const [sign, setSign] = useState(searchParams.get("sign") ?? "");
   const locations = useLoad<{ id: string; name: string }[]>("locations");
   const users = useLoad<{ id: string; name: string }[]>(
     user.role === "ADMIN" ? "users" : "locations",
@@ -358,6 +371,7 @@ export function HistoryPage() {
     to,
     source,
     destination,
+    sign,
     ...(user.role === "ADMIN" ? { creator } : {}),
   });
   const { data, error, load } = useLoad<{ items: Summary[]; count: number }>(
@@ -365,7 +379,7 @@ export function HistoryPage() {
   );
   // On phones the filters fold behind one button; the badge counts the set ones.
   const [filters, setFilters] = useState(false);
-  const active = [status, from, to, source, destination, creator].filter(
+  const active = [status, from, to, source, destination, creator, sign].filter(
     Boolean,
   ).length;
   return (
@@ -435,6 +449,18 @@ export function HistoryPage() {
                   {t(s[0] + s.slice(1).toLowerCase())}
                 </option>
               ))}
+            </Dropdown>
+            <Dropdown
+              className="md:w-52"
+              aria-label={t("Signatures")}
+              value={sign}
+              onChange={(e) => {
+                setSign(e.target.value);
+                setPage(0);
+              }}
+            >
+              <option value="">{t("All signatures")}</option>
+              <option value="waiting">{t("Waiting for my signature")}</option>
             </Dropdown>
             <div className="md:w-44">
               <DatePicker

@@ -501,19 +501,13 @@ export const fa: Record<string, string> = {
   "Transfer changed. Refresh and retry.":
     "انتقال تغییر کرده است. صفحه را تازه کنید و دوباره تلاش کنید.",
 
-  Sign: "امضا",
-  "Sign transfer": "امضای انتقال",
-  "The sender signs for the source location and the receiver for the destination.":
-    "تحویل‌دهنده از طرف مبدأ و تحویل‌گیرنده از طرف مقصد امضا می‌کند.",
   "Waiting for my signature": "در انتظار امضای من",
-  "Signed by me": "امضاشده توسط من",
-  "Nothing is waiting for your signature": "انتقالی در انتظار امضای شما نیست",
-  "You have not signed any transfer yet": "هنوز هیچ انتقالی را امضا نکرده‌اید",
+  "All signatures": "همهٔ امضاها",
+  Signed: "امضاشده",
   Sender: "تحویل‌دهنده",
   Receiver: "تحویل‌گیرنده",
   "Your signature": "امضای شما",
   "Not signed": "امضا نشده",
-  View: "مشاهده",
   Signatures: "امضاها",
   Signature: "امضا",
   "Sender signature": "امضای تحویل‌دهنده",

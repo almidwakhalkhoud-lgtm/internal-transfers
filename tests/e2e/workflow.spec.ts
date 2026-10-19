@@ -941,7 +941,6 @@ test("administrator grants only New transfer through UI and code user confirms a
     "Overview",
     "Requests",
     "Transfer history",
-    "Sign",
     "Products",
     "Locations",
   ])
@@ -1429,7 +1428,7 @@ test("a request is filled by the supplier with smaller quantities and becomes a 
   ).toBe(409);
   await supplierContext.close();
 });
-test("sender and receiver sign a transfer by hand and the PDF shows both", async ({
+test("sender and receiver sign a transfer by hand from Transfer history and the PDF shows both", async ({
   page,
   browser,
 }) => {
@@ -1449,8 +1448,9 @@ test("sender and receiver sign a transfer by hand and the PDF shows both", async
   const original = await db.transfer.findUniqueOrThrow({
     where: { id: saved.id },
   });
-  await page.goto("/sign");
-  await page.getByRole("link", { name: saved.number }).click();
+  // Signing happens in Transfer history, filtered to what waits for you.
+  await page.goto("/transfers?sign=waiting");
+  await page.getByRole("link", { name: saved.number }).first().click();
   await page.getByRole("button", { name: "Sign as sender" }).click();
   const modal = page.getByRole("dialog");
   const box = (await modal.getByLabel("Signature box").boundingBox())!;
@@ -1514,8 +1514,19 @@ test("sender and receiver sign a transfer by hand and the PDF shows both", async
       where: { target: saved.id, action: "TRANSFER_SIGNED" },
     }),
   ).toBe(2);
-  await admin.goto("/sign");
-  await admin.getByRole("tab", { name: "Signed by me" }).click();
-  await expect(admin.getByRole("link", { name: saved.number })).toBeVisible();
+  await admin.goto("/transfers");
+  await expect(
+    admin
+      .getByRole("row")
+      .filter({ hasText: saved.number })
+      .getByText("Signed 2/2"),
+  ).toBeVisible();
+  const waiting = admin.waitForResponse(
+    (r) =>
+      r.url().includes("/api/transfers?") && r.url().includes("sign=waiting"),
+  );
+  await admin.goto("/transfers?sign=waiting");
+  await waiting;
+  await expect(admin.getByRole("link", { name: saved.number })).toHaveCount(0);
   await adminContext.close();
 });
