@@ -1090,18 +1090,58 @@ async function handle(
       return NextResponse.json(l);
     }
     if (path === "settings") {
-      if (method === "GET")
-        return NextResponse.json(
-          (await db.sequence.findUnique({ where: { id: "transfer" } })) ?? {
-            value: 0,
-          },
-        );
+      if (method === "GET") {
+        const [transfer, request] = await Promise.all([
+          db.sequence.findUnique({ where: { id: "transfer" } }),
+          db.sequence.findUnique({ where: { id: "request" } }),
+        ]);
+        return NextResponse.json({
+          value: transfer?.value ?? 0,
+          request: request?.value ?? 0,
+        });
+      }
       if (method === "PATCH") {
+        const counter = z.number().int().positive().max(2147483647);
+        const body = await req.json();
+        // Requests (طلبیه) have their own counter, REQ-0001, set the same way.
+        if (body && typeof body === "object" && "nextRequest" in body) {
+          const v = z.object({ nextRequest: counter }).parse(body);
+          await db.$transaction(async (tx) => {
+            await tx.sequence.upsert({
+              where: { id: "request" },
+              create: { id: "request", value: 0, prefix: "REQ" },
+              update: { value: { increment: 0 } },
+            });
+            // Back only past numbers nothing holds - a deleted request's
+            // number too, which the audit log still names.
+            const deleted = await tx.audit.findMany({
+              where: { action: "REQUEST_DELETED" },
+              select: { detail: true },
+            });
+            const held = [
+              ...(await tx.stockRequest.findMany({ select: { number: true } })),
+              ...deleted.map((a) => ({
+                number: String((a.detail as { number?: string })?.number ?? ""),
+              })),
+            ].map((r) => sequenceOf(r.number));
+            if (held.some((n) => n >= v.nextRequest))
+              throw new HttpError(
+                400,
+                "The next number must be greater than every number already used",
+              );
+            await tx.sequence.update({
+              where: { id: "request" },
+              data: { value: v.nextRequest - 1 },
+            });
+          });
+          await audit(user.id, "SETTINGS_UPDATED", "request", v);
+          return NextResponse.json({ ok: true });
+        }
         const v = z
           .object({
-            nextValue: z.number().int().positive().max(2147483647),
+            nextValue: counter,
           })
-          .parse(await req.json());
+          .parse(body);
         await db.$transaction(async (tx) => {
           await tx.sequence.upsert({
             where: { id: "transfer" },

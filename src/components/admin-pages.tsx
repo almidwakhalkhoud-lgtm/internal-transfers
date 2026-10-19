@@ -862,8 +862,11 @@ function ApiKeys() {
 }
 export function SettingsPage() {
   const { t } = useBuzz();
-  const { data, error, load } = useLoad<{ value: number }>("settings");
+  const { data, error, load } = useLoad<{ value: number; request: number }>(
+    "settings",
+  );
   const [message, setMessage] = useState("");
+  const [requestMessage, setRequestMessage] = useState("");
   const [err, setErr] = useState("");
   return (
     <>
@@ -922,6 +925,58 @@ export function SettingsPage() {
                 {t("Save changes")}
               </Button>
               {message && <Notice>{t(message)}</Notice>}
+            </Form>
+          )}
+        </Card>
+        <Card className="max-w-2xl">
+          <CardHeader title={t("Request numbering")} />
+          {data && (
+            <Form
+              className="flex flex-col gap-4 p-4 md:p-6"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await api(
+                    "settings",
+                    {
+                      nextRequest: Number(
+                        new FormData(e.currentTarget).get("nextRequest"),
+                      ),
+                    },
+                    "PATCH",
+                  );
+                  setRequestMessage("Changes saved");
+                  load();
+                } catch (e) {
+                  setErr((e as Error).message);
+                }
+              }}
+            >
+              <p className="m-0 text-sm leading-relaxed text-muted">
+                {t(
+                  "Requests have their own counter, e.g. REQ-0001. The transfer made from a request is numbered like every transfer: the first letters of its source and destination and the transfer counter, e.g. NM-0012.",
+                )}
+              </p>
+              <p className="m-0 text-sm text-muted">
+                {t("Last reserved number")}:{" "}
+                <strong className="text-ink">{data.request}</strong>
+              </p>
+              <Field label={t("Next request number")} className="sm:max-w-xs">
+                <input
+                  className={inputStyles}
+                  type="number"
+                  name="nextRequest"
+                  min={1}
+                  max={2147483647}
+                  defaultValue={data.request + 1}
+                  required
+                  dir="ltr"
+                />
+              </Field>
+              <Button type="submit" variant="primary" className="sm:self-start">
+                {t("Save changes")}
+              </Button>
+              {requestMessage && <Notice>{t(requestMessage)}</Notice>}
             </Form>
           )}
         </Card>
@@ -1091,9 +1146,9 @@ function describe(a: AuditEntry, t: (key: string) => string) {
     case "API_KEY_REVOKED":
       return s("name");
     case "SETTINGS_UPDATED":
-      return (
-        s("nextValue") && `${t("Next transfer number")}: ${s("nextValue")}`
-      );
+      return s("nextRequest")
+        ? `${t("Next request number")}: ${s("nextRequest")}`
+        : s("nextValue") && `${t("Next transfer number")}: ${s("nextValue")}`;
     default:
       return a.targetName ?? "";
   }
