@@ -937,7 +937,13 @@ test("administrator grants only New transfer through UI and code user confirms a
     .fill("create-only@buzz.test");
   await modal.getByLabel("Main", { exact: true }).check();
   await modal.getByLabel("Al Azaiba", { exact: true }).check();
-  for (const label of ["Overview", "Transfer history", "Products", "Locations"])
+  for (const label of [
+    "Overview",
+    "Requests",
+    "Transfer history",
+    "Products",
+    "Locations",
+  ])
     await modal.getByLabel(label, { exact: true }).uncheck();
   await modal.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
