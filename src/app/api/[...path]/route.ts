@@ -29,6 +29,7 @@ import { confirmTransfer, transferPdf } from "@/lib/transfers";
 import {
   closeRequest,
   createRequest,
+  deleteRequest,
   findRequest,
   fulfillRequest,
   saveSupply,
@@ -600,6 +601,13 @@ async function handle(
       }
       if (!action && method === "PATCH") {
         await saveSupply(user, id, await req.json());
+        return NextResponse.json({ ok: true });
+      }
+      if (!action && method === "DELETE") {
+        const { reason } = z
+          .object({ reason: z.string().trim().max(500).optional() })
+          .parse(await req.json().catch(() => ({})));
+        await deleteRequest(user, id, reason ?? "");
         return NextResponse.json({ ok: true });
       }
       if (action === "fulfill" && method === "POST") {

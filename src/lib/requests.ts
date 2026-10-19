@@ -300,3 +300,41 @@ export async function closeRequest(
     });
   });
 }
+// Administrators remove a request at any stage. The audit log keeps a full
+// copy; a transfer already created from it stays as it is.
+export async function deleteRequest(user: User, id: string, reason: string) {
+  if (user.role !== "ADMIN")
+    throw new HttpError(403, "Administrator access required");
+  await db.$transaction(async (tx) => {
+    const r = await tx.stockRequest.findUnique({
+      where: { id },
+      include: { transfer: { select: { number: true } } },
+    });
+    if (!r) throw new HttpError(404, "Request not found");
+    const result = await tx.stockRequest.deleteMany({
+      where: { id, updatedAt: r.updatedAt },
+    });
+    if (result.count !== 1)
+      throw new HttpError(409, "The request changed. Refresh and retry.");
+    await tx.audit.create({
+      data: {
+        actor: user.id,
+        action: "REQUEST_DELETED",
+        target: r.id,
+        detail: {
+          number: r.number,
+          from: r.supplier,
+          to: r.requester,
+          creatorId: r.creatorId,
+          creatorName: r.creatorName,
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+          remarks: r.remarks,
+          lines: r.lines as Prisma.InputJsonValue,
+          transfer: r.transfer?.number ?? null,
+          reason,
+        },
+      },
+    });
+  });
+}
