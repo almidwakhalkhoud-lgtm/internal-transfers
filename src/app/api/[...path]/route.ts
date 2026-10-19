@@ -547,16 +547,12 @@ async function handle(
           user.role === "ADMIN"
             ? {}
             : {
-                OR: [
-                  { creatorId: user.id },
-                  { requesterId: { in: mine } },
-                  { supplierId: { in: mine } },
-                ],
+                OR: [{ creatorId: user.id }, { supplierId: { in: mine } }],
               },
           box === "incoming"
             ? { supplierId: { in: mine } }
             : box === "outgoing"
-              ? { OR: [{ creatorId: user.id }, { requesterId: { in: mine } }] }
+              ? { creatorId: user.id }
               : {},
         ],
         number: { contains: q.get("q") ?? "", mode: "insensitive" },
@@ -599,10 +595,7 @@ async function handle(
             pdfReady: !!transfer.pdf,
           },
           canSupply: canSupply(user, r),
-          canCancel:
-            user.role === "ADMIN" ||
-            r.creatorId === user.id ||
-            user.locations.some((l) => l.id === r.requesterId),
+          canCancel: user.role === "ADMIN" || r.creatorId === user.id,
         });
       }
       if (!action && method === "PATCH") {

@@ -281,9 +281,7 @@ export async function closeRequest(
     const allowed =
       status === "DECLINED"
         ? canSupply(user, r)
-        : user.role === "ADMIN" ||
-          r.creatorId === user.id ||
-          user.locations.some((l) => l.id === r.requesterId);
+        : user.role === "ADMIN" || r.creatorId === user.id;
     if (!allowed) throw new HttpError(403, "Request access denied");
     const result = await tx.stockRequest.updateMany({
       where: { id, status: "OPEN" },

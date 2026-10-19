@@ -117,16 +117,13 @@ export function allowedTransition(from: string, to: string) {
     (from === "APPROVED" && to === "RECEIVED")
   );
 }
-// Requesters and suppliers both see a request; only the supplier fills it.
+// A request is seen only by the person who made it, the people working at
+// the location it asks, and administrators. Only that location fills it.
 export function canSeeRequest(
   user: { id: string; role: string; locations: { id: string }[] },
-  r: { creatorId: string; requesterId: string; supplierId: string },
+  r: { creatorId: string; supplierId: string },
 ) {
-  return (
-    user.role === "ADMIN" ||
-    r.creatorId === user.id ||
-    user.locations.some((l) => l.id === r.requesterId || l.id === r.supplierId)
-  );
+  return r.creatorId === user.id || canSupply(user, r);
 }
 export function canSupply(
   user: { role: string; locations: { id: string }[] },
