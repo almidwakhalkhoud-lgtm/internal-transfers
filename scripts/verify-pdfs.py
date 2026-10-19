@@ -32,5 +32,5 @@ for name in ['real-products-transfer','200-lines','barcode-fixture','employee-sn
   print(json.dumps({'barcodeDecoded':[r.text for r in decoded],'leadingZerosPreserved':True}))
  if name=='employee-snapshot':
   full='\n'.join(texts)
-  assert 'QA Staff' in full and 'Changed employee display name' not in full,'Employee was not snapshotted'
+  assert 'Changed employee display name' not in full,'A later user name reached the PDF'
  print(json.dumps({'file':name,'pages':len(doc),'letter':True,'nonemptyPages':True}))
