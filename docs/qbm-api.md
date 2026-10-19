@@ -8,7 +8,9 @@ Authorization: Bearer buzz_…
 ```
 
 A key can only read confirmed transfers and mark them as entered in QBM.
-Revoking it in Settings stops it at once.
+A key that an administrator marked **Can approve** (when creating it, or
+with **Allow approving** in the list) may also approve a transfer after it
+has been entered. Revoking a key in Settings stops it at once.
 
 | Call | Does |
 |---|---|
@@ -16,6 +18,10 @@ Revoking it in Settings stops it at once.
 | `GET /api/v1/transfers/MA-0012` | One transfer, by number or id. |
 | `POST /api/v1/transfers/MA-0012/qbm` `{"reference":"…"}` | Records the QBM document number. Repeating it is harmless; a different number answers 409. |
 | `DELETE /api/v1/transfers/MA-0012/qbm` | Removes that record, e.g. after a mistaken entry. |
+| `POST /api/v1/transfers/MA-0012/approve` | Approves a `PENDING` transfer that has been recorded as entered in QBM. Repeating it is harmless. 403 if the key may not approve; 409 if the QBM entry is not recorded yet, or the transfer is rejected or received. |
+
+The usual order for the entry app: list `entered=no`, type each transfer
+into QBM, `POST …/qbm` with the QBM number, then `POST …/approve`.
 
 Each transfer:
 

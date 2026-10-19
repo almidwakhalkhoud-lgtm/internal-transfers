@@ -435,6 +435,12 @@ export const fa: Record<string, string> = {
   QBM_ENTRY_REMOVED: "حذف علامت ورود QBM",
   API_KEY_CREATED: "ساخت کلید API",
   API_KEY_REVOKED: "باطل کردن کلید API",
+  API_KEY_UPDATED: "تغییر کلید API",
+  "Can approve": "اجازه تصویب",
+  "Allow approving": "اجازه تصویب بده",
+  "Stop approving": "لغو اجازه تصویب",
+  "A key allowed to approve may also approve a pending transfer after it has been entered in QBM.":
+    "کلیدی که اجازه تصویب دارد، می‌تواند ترانسفر در انتظار را بعد از ورود در QBM تصویب کند.",
   "Test notification sent": "اعلان آزمایشی ارسال شد",
   "This account has no device with notifications on.":
     "هیچ دستگاهی با اعلان روشن برای این حساب ثبت نشده است.",

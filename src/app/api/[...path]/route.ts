@@ -741,14 +741,18 @@ async function handle(
             createdAt: true,
             lastUsedAt: true,
             revokedAt: true,
+            canApprove: true,
             _count: { select: { qbmEntries: true } },
           },
           orderBy: { createdAt: "desc" },
         }),
       );
     if (path === "api-keys" && method === "POST") {
-      const { name } = z
-        .object({ name: z.string().trim().min(1).max(60) })
+      const { name, canApprove } = z
+        .object({
+          name: z.string().trim().min(1).max(60),
+          canApprove: z.boolean().default(false),
+        })
         .parse(await req.json());
       const created = newApiKey();
       const record = await db.apiKey.create({
@@ -757,11 +761,27 @@ async function handle(
           prefix: created.prefix,
           hash: created.hash,
           createdById: user.id,
+          canApprove,
         },
       });
-      await audit(user.id, "API_KEY_CREATED", record.id, { name });
+      await audit(user.id, "API_KEY_CREATED", record.id, { name, canApprove });
       // The only time the key leaves the server.
       return NextResponse.json({ id: record.id, key: created.key });
+    }
+    const keyMatch = path.match(/^api-keys\/([^/]+)$/);
+    if (keyMatch && method === "PATCH") {
+      const { canApprove } = z
+        .object({ canApprove: z.boolean() })
+        .parse(await req.json());
+      const record = await db.apiKey.update({
+        where: { id: keyMatch[1] },
+        data: { canApprove },
+      });
+      await audit(user.id, "API_KEY_UPDATED", record.id, {
+        name: record.name,
+        canApprove,
+      });
+      return NextResponse.json({ ok: true });
     }
     const revoke = path.match(/^api-keys\/([^/]+)\/revoke$/);
     if (revoke && method === "POST") {
