@@ -112,6 +112,12 @@ export const fa: Record<string, string> = {
   REQUEST_FULFILLED: "تأیید طلبیه و ساخت ترانسفر",
   REQUEST_CANCELLED: "لغو طلبیه",
   REQUEST_DECLINED: "رد طلبیه",
+  REQUEST_DELETED: "حذف طلبیه",
+  "Delete request": "حذف طلبیه",
+  "The request is permanently deleted. A full copy is kept in the audit log.":
+    "طلبیه برای همیشه حذف می‌شود. یک نسخه کامل در گزارش فعالیت نگهداری می‌شود.",
+  "The transfer created from it is not deleted; delete it separately if needed.":
+    "ترانسفری که از آن ساخته شده حذف نمی‌شود؛ در صورت نیاز آن را جداگانه حذف کنید.",
   "Inventory transfer document": "سند انتقال موجودی",
   Workspace: "فضای کاری",
   Overview: "نمای کلی",

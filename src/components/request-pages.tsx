@@ -491,9 +491,10 @@ export function RequestDetail({ id }: { id: string }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [dialog, setDialog] = useState<"fulfill" | "decline" | "cancel" | null>(
-    null,
-  );
+  const [dialog, setDialog] = useState<
+    "fulfill" | "decline" | "cancel" | "delete" | null
+  >(null);
+  const router = useRouter();
   const [reason, setReason] = useState("");
   const [created, setCreated] = useState<{
     id: string;
@@ -632,6 +633,22 @@ export function RequestDetail({ id }: { id: string }) {
                   </strong>
                 )}
               </p>
+            )}
+            {user.role === "ADMIN" && (
+              <div className="mt-4 flex border-t border-line pt-4 sm:justify-end">
+                <Button
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  disabled={busy}
+                  onClick={() => {
+                    setReason("");
+                    setDialog("delete");
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {t("Delete request")}
+                </Button>
+              </div>
             )}
           </Card>
           {editing && (
@@ -941,6 +958,67 @@ export function RequestDetail({ id }: { id: string }) {
               }
             >
               {t(busy ? "Please wait…" : "Confirm and generate PDF")}
+            </Button>
+          </div>
+        </Modal>
+      )}
+      {data && dialog === "delete" && (
+        <Modal title="Delete request" onClose={() => !busy && setDialog(null)}>
+          <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
+            {t(
+              "The request is permanently deleted. A full copy is kept in the audit log.",
+            )}
+            {data.transfer &&
+              " " +
+                t(
+                  "The transfer created from it is not deleted; delete it separately if needed.",
+                )}
+          </p>
+          <dl className={cx(reviewGrid, "mb-4")}>
+            <dt className="text-subtle">{t("Request number")}</dt>
+            <dd className={reviewValue} dir="ltr">
+              {data.number}
+            </dd>
+            <dt className="text-subtle">{t("Route")}</dt>
+            <dd className={reviewValue}>
+              {data.supplier} → {data.requester}
+            </dd>
+          </dl>
+          <Field label={t("Reason (optional)")}>
+            <textarea
+              className={cx(inputStyles, "min-h-20 py-2")}
+              value={reason}
+              maxLength={500}
+              rows={3}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </Field>
+          <div className={modalActions}>
+            <Button
+              data-initial-focus
+              disabled={busy}
+              onClick={() => setDialog(null)}
+            >
+              {t("Cancel")}
+            </Button>
+            <Button
+              variant="dangerSolid"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api(`requests/${id}`, { reason }, "DELETE");
+                  router.push("/requests");
+                  router.refresh();
+                } catch (e) {
+                  setErr((e as Error).message);
+                  setDialog(null);
+                  setBusy(false);
+                }
+              }}
+            >
+              <Trash2 size={16} />
+              {t(busy ? "Please wait…" : "Delete request")}
             </Button>
           </div>
         </Modal>
