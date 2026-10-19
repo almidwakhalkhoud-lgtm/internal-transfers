@@ -6,7 +6,7 @@ import {
 } from "@playwright/test";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 const db = new PrismaClient();
 const origin = "http://127.0.0.1:3101";
 async function login(page: Page, email = "staff@buzz.test") {
@@ -1459,8 +1459,22 @@ test("sender and receiver sign a transfer by hand from Transfer history and the 
   await page.mouse.move(box.x + 120, box.y + 40, { steps: 8 });
   await page.mouse.move(box.x + 220, box.y + 120, { steps: 8 });
   await page.mouse.up();
+  // The PDF held ready for WhatsApp is fetched again once signed, so
+  // Download and Share hand over the signed PDF, not the one shown before.
+  const refreshed = page.waitForResponse(
+    (r) => r.url().endsWith(`/api/transfers/${saved.id}/pdf`) && r.ok(),
+  );
   await modal.getByRole("button", { name: "Save signature" }).click();
   await expect(page.getByAltText(/Signature · /)).toBeVisible();
+  await refreshed;
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  const file = readFileSync(await (await download).path());
+  const signed = await db.transfer.findUniqueOrThrow({
+    where: { id: saved.id },
+  });
+  expect(file.equals(Buffer.from(signed.signedPdf!))).toBe(true);
+  expect(file.equals(Buffer.from(original.pdf!))).toBe(false);
   // The same person cannot also sign as receiver, even with both locations.
   await expect(
     page.getByRole("button", { name: "Sign as receiver" }),

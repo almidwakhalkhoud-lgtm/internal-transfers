@@ -1091,9 +1091,13 @@ function canSharePdf(file: File) {
 export function SuccessActions({
   transfer,
   onAnother,
+  version = "",
 }: {
   transfer: { id: string; number: string; pdfReady: boolean };
   onAnother?: () => void;
+  // Changes when the PDF changes (a new signature), so the file held ready
+  // for sharing is fetched again instead of sending the old one.
+  version?: string;
 }) {
   const { t } = useBuzz();
   const [file, setFile] = useState<File | null>(null);
@@ -1103,8 +1107,12 @@ export function SuccessActions({
   const [busy, setBusy] = useState(false);
   const url = `/api/transfers/${transfer.id}/pdf`;
   const prepare = useCallback(
-    () =>
-      fetch(url)
+    (reload = false) => {
+      if (reload) {
+        setFile(null);
+        setBusy(true);
+      }
+      return fetch(url)
         .then(async (res) => {
           if (!res.ok)
             throw new Error(
@@ -1119,12 +1127,16 @@ export function SuccessActions({
           setError("");
         })
         .catch((e) => setError(e.message))
-        .finally(() => setBusy(false)),
+        .finally(() => setBusy(false));
+    },
     [url, transfer.number],
   );
+  const shown = useRef(version);
   useEffect(() => {
-    void prepare();
-  }, [prepare]);
+    const reload = shown.current !== version;
+    shown.current = version;
+    void prepare(reload);
+  }, [prepare, version]);
   const text = `${t("Transfer No")}: ${transfer.number} — MEHDI ALI TRADING Co. ${t("Inventory transfer document")}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   async function share() {
@@ -1183,7 +1195,7 @@ export function SuccessActions({
       {error && (
         <div className="mt-4 flex w-full max-w-md flex-col items-center gap-2">
           <Notice tone="error">{t(error)}</Notice>
-          <Button onClick={prepare}>{t("Retry PDF")}</Button>
+          <Button onClick={() => prepare()}>{t("Retry PDF")}</Button>
         </div>
       )}
       {message && (

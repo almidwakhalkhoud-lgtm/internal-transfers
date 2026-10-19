@@ -838,7 +838,10 @@ export function DetailPage({ id }: { id: string }) {
             canSign={data.canSign}
             onSigned={load}
           />
-          <SuccessActions transfer={data} />
+          <SuccessActions
+            transfer={data}
+            version={data.signatures.map((s) => s.side).join(",")}
+          />
         </div>
       )}
     </>
