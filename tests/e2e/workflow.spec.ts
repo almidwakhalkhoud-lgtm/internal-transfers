@@ -941,6 +941,7 @@ test("administrator grants only New transfer through UI and code user confirms a
     "Overview",
     "Requests",
     "Transfer history",
+    "Sign",
     "Products",
     "Locations",
   ])
@@ -1427,4 +1428,94 @@ test("a request is filled by the supplier with smaller quantities and becomes a 
     (await post(page.request, `requests/${request.id}/cancel`, {})).status(),
   ).toBe(409);
   await supplierContext.close();
+});
+test("sender and receiver sign a transfer by hand and the PDF shows both", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const input = await draft(page.request, [
+    {
+      productId: p.id,
+      version: p.updatedAt.toISOString(),
+      quantity: "2",
+      unit: "",
+    },
+  ]);
+  const saved = await (await post(page.request, "transfers", input)).json();
+  const original = await db.transfer.findUniqueOrThrow({
+    where: { id: saved.id },
+  });
+  await page.goto("/sign");
+  await page.getByRole("link", { name: saved.number }).click();
+  await page.getByRole("button", { name: "Sign as sender" }).click();
+  const modal = page.getByRole("dialog");
+  const box = (await modal.getByLabel("Signature box").boundingBox())!;
+  await page.mouse.move(box.x + 30, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 40, { steps: 8 });
+  await page.mouse.move(box.x + 220, box.y + 120, { steps: 8 });
+  await page.mouse.up();
+  await modal.getByRole("button", { name: "Save signature" }).click();
+  await expect(page.getByAltText(/Signature · /)).toBeVisible();
+  // The same person cannot also sign as receiver, even with both locations.
+  await expect(
+    page.getByRole("button", { name: "Sign as receiver" }),
+  ).toHaveCount(0);
+  const png = await db.signature.findFirstOrThrow({
+    where: { transferId: saved.id },
+  });
+  const image = `data:image/png;base64,${Buffer.from(png.image).toString("base64")}`;
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, {
+        side: "DESTINATION",
+        image,
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, {
+        side: "DESTINATION",
+        image: "data:image/png;base64,aGVsbG8=",
+      })
+    ).status(),
+  ).toBe(400);
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  expect(
+    (
+      await post(admin.request, `sign/${saved.id}`, { side: "SOURCE", image })
+    ).status(),
+  ).toBe(409);
+  expect(
+    (
+      await post(admin.request, `sign/${saved.id}`, {
+        side: "DESTINATION",
+        image,
+      })
+    ).ok(),
+  ).toBe(true);
+  const pdf = await admin.request.get(`/api/transfers/${saved.id}/pdf`);
+  expect(pdf.ok()).toBe(true);
+  const after = await db.transfer.findUniqueOrThrow({
+    where: { id: saved.id },
+  });
+  expect(Buffer.from(after.pdf!).equals(Buffer.from(original.pdf!))).toBe(true);
+  expect(after.signedPdfFor?.split(",")).toHaveLength(2);
+  expect((await pdf.body()).equals(Buffer.from(after.signedPdf!))).toBe(true);
+  expect(
+    await db.audit.count({
+      where: { target: saved.id, action: "TRANSFER_SIGNED" },
+    }),
+  ).toBe(2);
+  await admin.goto("/sign");
+  await admin.getByRole("tab", { name: "Signed by me" }).click();
+  await expect(admin.getByRole("link", { name: saved.number })).toBeVisible();
+  await adminContext.close();
 });

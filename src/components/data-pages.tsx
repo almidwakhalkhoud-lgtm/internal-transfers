@@ -39,6 +39,7 @@ import {
   table,
 } from "./ui";
 import { SuccessActions, Modal, type Product } from "./transfer-form";
+import { SignaturesCard, type SignatureView } from "./sign-pages";
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
 import {
   validateCatalog,
@@ -562,6 +563,8 @@ export function DetailPage({ id }: { id: string }) {
       remarks: string;
       pdfReady: boolean;
       request: { id: string; number: string } | null;
+      signatures: SignatureView[];
+      canSign: ("SOURCE" | "DESTINATION")[];
     }
   >(`transfers/${id}`);
   const [err, setErr] = useState("");
@@ -801,6 +804,14 @@ export function DetailPage({ id }: { id: string }) {
               </p>
             )}
           </Card>
+          <SignaturesCard
+            transferId={data.id}
+            source={data.source}
+            destination={data.destination}
+            signatures={data.signatures}
+            canSign={data.canSign}
+            onSigned={load}
+          />
           <SuccessActions transfer={data} />
         </div>
       )}

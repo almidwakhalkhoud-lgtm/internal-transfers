@@ -19,6 +19,9 @@ import {
   canAccess,
   canSupply,
   identifier,
+  signableSides,
+  signaturePng,
+  signatureSides,
   numberFor,
   routeCode,
   sequenceOf,
@@ -72,6 +75,22 @@ const summary = {
   creator: { select: { name: true } },
   qbmEntry: { select: { reference: true, enteredAt: true } },
 };
+// A signature as the pages show it, with its image ready for an <img>.
+function signatureView(s: {
+  id: string;
+  side: string;
+  signerName: string;
+  signedAt: Date;
+  image: Uint8Array;
+}) {
+  return {
+    id: s.id,
+    side: s.side,
+    signerName: s.signerName,
+    signedAt: s.signedAt,
+    image: `data:image/png;base64,${Buffer.from(s.image).toString("base64")}`,
+  };
+}
 async function handle(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -275,15 +294,17 @@ async function handle(
             : path.endsWith("/pdf") &&
                 (hasMenu(user, "new-transfer") || hasMenu(user, "requests"))
               ? null
-              : path.startsWith("transfers")
-                ? "transfers"
-                : path === "products"
-                  ? req.nextUrl.searchParams.has("exact")
-                    ? "new-transfer"
-                    : "products"
-                  : path === "locations" && method === "GET"
-                    ? null
-                    : null;
+              : path === "sign" || path.startsWith("sign/")
+                ? "sign"
+                : path.startsWith("transfers")
+                  ? "transfers"
+                  : path === "products"
+                    ? req.nextUrl.searchParams.has("exact")
+                      ? "new-transfer"
+                      : "products"
+                    : path === "locations" && method === "GET"
+                      ? null
+                      : null;
     // Requests look products up by code exactly as new transfers do.
     if (
       requiredMenu &&
@@ -648,6 +669,7 @@ async function handle(
           creator: { select: { name: true } },
           qbmEntry: { select: { reference: true, enteredAt: true } },
           request: { select: { id: true, number: true } },
+          signatures: { orderBy: { signedAt: "asc" } },
         },
       });
       if (!t) throw new HttpError(404, "Transfer not found");
@@ -664,8 +686,14 @@ async function handle(
         });
       }
       if (method === "GET") {
-        const { pdf, ...rest } = t;
-        return NextResponse.json({ ...rest, pdfReady: !!pdf });
+        const { pdf, signatures, ...rest } = t;
+        return NextResponse.json({
+          ...rest,
+          signedPdf: undefined,
+          pdfReady: !!pdf,
+          signatures: signatures.map(signatureView),
+          canSign: hasMenu(user, "sign") ? signableSides(user, t) : [],
+        });
       }
       if (method === "PATCH") {
         await requireUser(true);
@@ -727,6 +755,152 @@ async function handle(
             },
           });
         });
+        return NextResponse.json({ ok: true });
+      }
+    }
+    if (path === "sign" && method === "GET") {
+      // Waiting: transfers at the viewer's locations with that side unsigned.
+      // Signed: transfers the viewer has signed.
+      const q = req.nextUrl.searchParams;
+      const page = Math.max(0, Number(q.get("page")) || 0);
+      const mine = user.locations.map((l) => l.id);
+      const unsigned = (side: "SOURCE" | "DESTINATION") => ({
+        ...(user.role === "ADMIN"
+          ? {}
+          : side === "SOURCE"
+            ? { sourceId: { in: mine } }
+            : { destinationId: { in: mine } }),
+        signatures: { none: { side } },
+      });
+      const where: Prisma.TransferWhereInput =
+        q.get("tab") === "signed"
+          ? { signatures: { some: { userId: user.id } } }
+          : {
+              approval: { not: "REJECTED" },
+              signatures: { none: { userId: user.id } },
+              OR: [unsigned("SOURCE"), unsigned("DESTINATION")],
+            };
+      const items = await db.transfer.findMany({
+        where,
+        select: {
+          ...summary,
+          sourceId: true,
+          destinationId: true,
+          signatures: {
+            select: {
+              side: true,
+              userId: true,
+              signerName: true,
+              signedAt: true,
+            },
+          },
+        },
+        orderBy: { confirmedAt: "desc" },
+        take: 25,
+        skip: page * 25,
+      });
+      return NextResponse.json({
+        items: items.map(
+          ({ sourceId, destinationId, signatures, ...rest }) => ({
+            ...rest,
+            signatures: signatures.map((s) => ({
+              side: s.side,
+              signerName: s.signerName,
+              signedAt: s.signedAt,
+            })),
+            canSign: signableSides(user, {
+              sourceId,
+              destinationId,
+              approval: rest.approval,
+              signatures,
+            }),
+          }),
+        ),
+        count: await db.transfer.count({ where }),
+      });
+    }
+    const signMatch = path.match(/^sign\/([^/]+)$/);
+    if (signMatch) {
+      const t = await db.transfer.findUnique({
+        where: { id: signMatch[1] },
+        select: {
+          ...summary,
+          sourceId: true,
+          destinationId: true,
+          creatorId: true,
+          lines: true,
+          remarks: true,
+          signatures: { orderBy: { signedAt: "asc" } },
+        },
+      });
+      if (!t) throw new HttpError(404, "Transfer not found");
+      if (!canAccess(user, t))
+        throw new HttpError(403, "Transfer access denied");
+      if (method === "GET") {
+        return NextResponse.json({
+          id: t.id,
+          number: t.number,
+          source: t.source,
+          destination: t.destination,
+          date: t.date,
+          total: t.total,
+          approval: t.approval,
+          creator: t.creator,
+          lines: t.lines,
+          remarks: t.remarks,
+          signatures: t.signatures.map(signatureView),
+          canSign: signableSides(user, t),
+        });
+      }
+      if (method === "POST") {
+        const input = z
+          .object({
+            side: z.enum(signatureSides),
+            image: z.string().max(500_000),
+          })
+          .parse(await req.json());
+        const image = signaturePng(input.image);
+        if (!image) throw new HttpError(400, "Draw your signature first");
+        if (!signableSides(user, t).includes(input.side))
+          throw new HttpError(
+            t.signatures.some((s) => s.side === input.side) ? 409 : 403,
+            t.signatures.some((s) => s.side === input.side)
+              ? "This side is already signed"
+              : "You cannot sign this side of the transfer",
+          );
+        try {
+          await db.$transaction(async (tx) => {
+            await tx.signature.create({
+              data: {
+                transferId: t.id,
+                side: input.side,
+                userId: user.id,
+                signerName: user.name,
+                image: new Uint8Array(image),
+              },
+            });
+            await tx.audit.create({
+              data: {
+                actor: user.id,
+                action: "TRANSFER_SIGNED",
+                target: t.id,
+                detail: {
+                  number: t.number,
+                  side: input.side,
+                  from: t.source,
+                  to: t.destination,
+                },
+              },
+            });
+          });
+        } catch (e) {
+          if (
+            e instanceof Prisma.PrismaClientKnownRequestError &&
+            e.code === "P2002"
+          )
+            throw new HttpError(409, "This side is already signed");
+          throw e;
+        }
         return NextResponse.json({ ok: true });
       }
     }

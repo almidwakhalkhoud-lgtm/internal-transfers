@@ -172,6 +172,7 @@ const menuLabels: Record<string, string> = {
   "new-transfer": "New transfer",
   requests: "Requests",
   transfers: "Transfer history",
+  sign: "Sign",
   products: "Products",
   locations: "Locations",
 };
@@ -1008,6 +1009,7 @@ const auditActions = [
   "API_KEY_UPDATED",
   "TRANSFER_CONFIRMED",
   "TRANSFER_DELETED",
+  "TRANSFER_SIGNED",
   "DRAFT_DELETED",
   "APPROVED",
   "REJECTED",
@@ -1047,6 +1049,7 @@ const actionNames: Record<string, string> = {
   REQUEST_DELETED: "Request deleted",
   TRANSFER_CONFIRMED: "Transfer confirmed",
   TRANSFER_DELETED: "Transfer deleted",
+  TRANSFER_SIGNED: "Transfer signed",
   DRAFT_DELETED: "Draft deleted",
   APPROVED: "Transfer approved",
   REJECTED: "Transfer rejected",
@@ -1104,6 +1107,14 @@ function describe(a: AuditEntry, t: (key: string) => string) {
           `${s("from") || s("source")} → ${s("to") || s("destination")}`,
         s("lines") && `${s("lines")} ${t("items")}`,
         s("total") && `${t("Total quantity")} ${s("total")}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "TRANSFER_SIGNED":
+      return [
+        s("number") || a.targetName,
+        s("side") && t(s("side") === "SOURCE" ? "Sender" : "Receiver"),
+        s("from") && `${s("from")} → ${s("to")}`,
       ]
         .filter(Boolean)
         .join(" · ");

@@ -21,7 +21,7 @@ for name in ['real-products-transfer','200-lines','barcode-fixture','employee-sn
    codes.extend(w[4] for w in words if 30<w[0]<160 and w[4] in {p['code'] for p in expected})
   assert codes==[p['code'] for p in expected],f'Incorrect item order/count: {len(codes)}'
   assert 'Total transferred quantity: 225' in full,'Incorrect total'
-  assert full.count('Employee signature:')==1 and full.count('Manager signature:')==1
+  assert full.count('Sender signature:')==1 and full.count('Receiver signature:')==1
   assert len(doc)>1,'Pagination not exercised'
  if name=='barcode-fixture':
   import zxingcpp

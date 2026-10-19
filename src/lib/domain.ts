@@ -143,6 +143,40 @@ export function canAccess(
     user.locations.some((l) => l.id === t.sourceId || l.id === t.destinationId)
   );
 }
+// The sender signs for the source location and the receiver for the
+// destination; administrators may sign for either. Rejected transfers are
+// not signed, and one person never signs both sides of a transfer.
+export const signatureSides = ["SOURCE", "DESTINATION"] as const;
+export type SignatureSide = (typeof signatureSides)[number];
+export function signableSides(
+  user: { id: string; role: string; locations: { id: string }[] },
+  t: {
+    sourceId: string;
+    destinationId: string;
+    approval: string;
+    signatures: { side: string; userId: string }[];
+  },
+): SignatureSide[] {
+  if (t.approval === "REJECTED") return [];
+  if (t.signatures.some((s) => s.userId === user.id)) return [];
+  const mine = (id: string) =>
+    user.role === "ADMIN" || user.locations.some((l) => l.id === id);
+  return signatureSides.filter(
+    (side) =>
+      !t.signatures.some((s) => s.side === side) &&
+      mine(side === "SOURCE" ? t.sourceId : t.destinationId),
+  );
+}
+// A drawn signature arrives as a PNG data URL; anything else is refused.
+export function signaturePng(dataUrl: string) {
+  const prefix = "data:image/png;base64,";
+  if (!dataUrl.startsWith(prefix)) return null;
+  const bytes = Buffer.from(dataUrl.slice(prefix.length), "base64");
+  const magic = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length > 300_000 || magic.some((b, i) => bytes[i] !== b))
+    return null;
+  return bytes;
+}
 // "ss" (midwakh service) stands for whatever service was done, so staff name
 // it on each transfer line. Every other product keeps its catalog name.
 export const renamable = (code: string) => code.trim().toLowerCase() === "ss";

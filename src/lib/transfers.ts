@@ -186,11 +186,18 @@ const generating = new Map<string, Promise<Buffer>>();
 export async function transferPdf(user: User, id: string) {
   const t = await db.transfer.findUnique({
     where: { id },
+    include: { signatures: { orderBy: { signedAt: "asc" } } },
   });
   if (!t) throw new HttpError(404, "Transfer not found");
   if (!canAccess(user, t)) throw new HttpError(403, "Transfer access denied");
-  if (t.pdf) return { t, buffer: Buffer.from(t.pdf) };
-  let job = generating.get(id);
+  // Once signed, the PDF people download shows the signatures. It is made
+  // apart from the saved PDF, which stays as it was at confirmation.
+  const signedFor = t.signatures.map((s) => s.id).join(",");
+  if (signedFor && t.signedPdf && t.signedPdfFor === signedFor)
+    return { t, buffer: Buffer.from(t.signedPdf) };
+  if (!signedFor && t.pdf) return { t, buffer: Buffer.from(t.pdf) };
+  const jobKey = `${id}:${signedFor}`;
+  let job = generating.get(jobKey);
   if (!job) {
     job = (async () => {
       try {
@@ -200,7 +207,23 @@ export async function transferPdf(user: User, id: string) {
           lines: t.lines as SnapshotLine[],
           total: t.total.toString(),
           employee: t.creatorName,
+          signatures: t.signatures.map((s) => ({
+            side: s.side,
+            signerName: s.signerName,
+            signedAt: s.signedAt,
+            image: Buffer.from(s.image),
+          })),
         });
+        if (signedFor) {
+          await db.transfer.update({
+            where: { id },
+            data: {
+              signedPdf: new Uint8Array(buffer),
+              signedPdfFor: signedFor,
+            },
+          });
+          return buffer;
+        }
         await db.transfer.updateMany({
           where: { id, pdf: null },
           data: {
@@ -215,13 +238,14 @@ export async function transferPdf(user: User, id: string) {
         });
         return Buffer.from(saved.pdf!);
       } catch (e) {
-        await db.transfer.update({ where: { id }, data: { pdfError: true } });
+        if (!signedFor)
+          await db.transfer.update({ where: { id }, data: { pdfError: true } });
         throw e;
       } finally {
-        generating.delete(id);
+        generating.delete(jobKey);
       }
     })();
-    generating.set(id, job);
+    generating.set(jobKey, job);
   }
   return { t, buffer: await job };
 }

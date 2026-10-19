@@ -25,6 +25,7 @@ import {
   Globe,
   ShieldCheck,
   Menu,
+  Signature,
 } from "lucide-react";
 import { translate, type Locale } from "@/lib/i18n";
 import { api } from "@/lib/client";
@@ -111,6 +112,7 @@ export function Shell({
     ["New transfer", "/new-transfer", ArrowLeftRight],
     ["Requests", "/requests", ClipboardList],
     ["Transfer history", "/transfers", History],
+    ["Sign", "/sign", Signature],
     ["Products", "/products", Package],
     ["Locations", "/locations", MapPin],
   ] as const;

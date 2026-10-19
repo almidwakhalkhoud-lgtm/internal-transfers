@@ -33,6 +33,11 @@ enum RequestStatus {
   DECLINED
 }
 
+enum SignatureSide {
+  SOURCE
+  DESTINATION
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -43,7 +48,7 @@ model User {
   locale            String             @default("en")
   accessHash        String?            @unique
   accessVerifier    String?
-  menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "products", "locations"])
+  menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "sign", "products", "locations"])
   locations         Location[]
   sessions          Session[]
   transfers         Transfer[]
@@ -137,6 +142,11 @@ model Transfer {
   pdfError      Boolean            @default(false)
   qbmEntry      QbmEntry?
   request       StockRequest?
+  signatures    Signature[]
+  // The PDF with the signatures drawn in; signedPdfFor names the signatures
+  // it shows, so a new signature makes it stale. The saved PDF never changes.
+  signedPdf     Bytes?
+  signedPdfFor  String?
 
   @@index([creatorId, confirmedAt])
   @@index([approval, confirmedAt])
@@ -213,4 +223,20 @@ model QbmEntry {
   enteredAt  DateTime @default(now())
   keyId      String
   key        ApiKey   @relation(fields: [keyId], references: [id])
+}
+
+// A hand-drawn signature: one by someone at the source location (sender) and
+// one by someone at the destination (receiver). Signatures cannot be changed.
+model Signature {
+  id         String        @id @default(cuid())
+  transferId String
+  transfer   Transfer      @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  side       SignatureSide
+  userId     String
+  signerName String
+  image      Bytes
+  signedAt   DateTime      @default(now())
+
+  @@unique([transferId, side])
+  @@index([userId])
 }

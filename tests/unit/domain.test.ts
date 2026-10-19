@@ -13,6 +13,8 @@ import {
   transferInput,
   unitsFromDescription,
   renamable,
+  signableSides,
+  signaturePng,
 } from "../../src/lib/domain";
 describe("exact product identifiers", () => {
   it("preserves zeros and internal spacing", () => {
@@ -165,5 +167,46 @@ describe("renamable products", () => {
     expect(renamable(" SS ")).toBe(true);
     expect(renamable("ss1")).toBe(false);
     expect(renamable("1066")).toBe(false);
+  });
+});
+describe("transfer signatures", () => {
+  const t = {
+    sourceId: "main",
+    destinationId: "sur",
+    approval: "PENDING",
+    signatures: [] as { side: string; userId: string }[],
+  };
+  const staff = (id: string, ...locations: string[]) => ({
+    id,
+    role: "STAFF",
+    locations: locations.map((id) => ({ id })),
+  });
+  it("lets each location sign only its own side", () => {
+    expect(signableSides(staff("a", "main"), t)).toEqual(["SOURCE"]);
+    expect(signableSides(staff("b", "sur"), t)).toEqual(["DESTINATION"]);
+    expect(signableSides(staff("c", "other"), t)).toEqual([]);
+    expect(signableSides({ id: "x", role: "ADMIN", locations: [] }, t)).toEqual(
+      ["SOURCE", "DESTINATION"],
+    );
+  });
+  it("never lets one person sign both sides, a signed side or a rejected transfer", () => {
+    const signed = { ...t, signatures: [{ side: "SOURCE", userId: "a" }] };
+    expect(signableSides(staff("a", "main", "sur"), signed)).toEqual([]);
+    expect(signableSides(staff("b", "main", "sur"), signed)).toEqual([
+      "DESTINATION",
+    ]);
+    expect(
+      signableSides(staff("a", "main"), { ...t, approval: "REJECTED" }),
+    ).toEqual([]);
+  });
+  it("accepts only PNG signature images", () => {
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1,
+    ]);
+    expect(
+      signaturePng(`data:image/png;base64,${png.toString("base64")}`),
+    ).toEqual(png);
+    expect(signaturePng("data:image/png;base64,aGVsbG8=")).toBeNull();
+    expect(signaturePng("data:image/svg+xml;base64,PHN2Zz4=")).toBeNull();
   });
 });

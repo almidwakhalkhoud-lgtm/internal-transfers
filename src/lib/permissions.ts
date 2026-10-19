@@ -3,6 +3,7 @@ export const menus = [
   "new-transfer",
   "requests",
   "transfers",
+  "sign",
   "products",
   "locations",
 ] as const;

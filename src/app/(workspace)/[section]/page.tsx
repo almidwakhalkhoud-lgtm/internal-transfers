@@ -9,6 +9,7 @@ import {
   SettingsPage,
   AuditPage,
 } from "@/components/admin-pages";
+import { SignPage } from "@/components/sign-pages";
 export default async function Page({
   params,
 }: {
@@ -17,20 +18,29 @@ export default async function Page({
   const { section } = await params;
   const viewer = await currentUser();
   if (!viewer) redirect("/login");
-  if (section !== "access" && !hasMenu(viewer, section)) redirect(landingPage(viewer));
+  if (section !== "access" && !hasMenu(viewer, section))
+    redirect(landingPage(viewer));
   if (["users", "settings", "audit"].includes(section)) {
     const user = await currentUser();
     if (user?.role !== "ADMIN") redirect("/dashboard");
   }
   switch (section) {
     case "access":
-      return <p>{viewer.locale === "fa" ? "برای دریافت دسترسی با مدیر تماس بگیرید." : "Contact your administrator for menu access."}</p>;
+      return (
+        <p>
+          {viewer.locale === "fa"
+            ? "برای دریافت دسترسی با مدیر تماس بگیرید."
+            : "Contact your administrator for menu access."}
+        </p>
+      );
     case "dashboard":
       return <Dashboard />;
     case "transfers":
       return <HistoryPage />;
     case "requests":
       return <RequestsPage />;
+    case "sign":
+      return <SignPage />;
     case "products":
       return <ProductsPage />;
     case "locations":

@@ -500,6 +500,37 @@ export const fa: Record<string, string> = {
   "Reason (optional)": "دلیل (اختیاری)",
   "Transfer changed. Refresh and retry.":
     "انتقال تغییر کرده است. صفحه را تازه کنید و دوباره تلاش کنید.",
+
+  Sign: "امضا",
+  "Sign transfer": "امضای انتقال",
+  "The sender signs for the source location and the receiver for the destination.":
+    "تحویل‌دهنده از طرف مبدأ و تحویل‌گیرنده از طرف مقصد امضا می‌کند.",
+  "Waiting for my signature": "در انتظار امضای من",
+  "Signed by me": "امضاشده توسط من",
+  "Nothing is waiting for your signature": "انتقالی در انتظار امضای شما نیست",
+  "You have not signed any transfer yet": "هنوز هیچ انتقالی را امضا نکرده‌اید",
+  Sender: "تحویل‌دهنده",
+  Receiver: "تحویل‌گیرنده",
+  "Your signature": "امضای شما",
+  "Not signed": "امضا نشده",
+  View: "مشاهده",
+  Signatures: "امضاها",
+  Signature: "امضا",
+  "Sender signature": "امضای تحویل‌دهنده",
+  "Receiver signature": "امضای تحویل‌گیرنده",
+  "Sign as sender": "امضا به‌عنوان تحویل‌دهنده",
+  "Sign as receiver": "امضا به‌عنوان تحویل‌گیرنده",
+  "Sign inside the box with your finger or mouse. A saved signature cannot be changed.":
+    "داخل کادر با انگشت یا موس امضا کنید. امضای ذخیره‌شده قابل تغییر نیست.",
+  "Signature box": "کادر امضا",
+  Clear: "پاک کردن",
+  "Save signature": "ثبت امضا",
+  "Signature saved": "امضا ثبت شد",
+  "Draw your signature first": "ابتدا امضای خود را داخل کادر بکشید",
+  "This side is already signed": "این بخش قبلاً امضا شده است",
+  "You cannot sign this side of the transfer":
+    "شما اجازهٔ امضای این بخش از انتقال را ندارید",
+  TRANSFER_SIGNED: "امضای انتقال",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

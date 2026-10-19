@@ -72,7 +72,7 @@ Before it is fulfilled, the requester can **Cancel** a request and the asked loc
 
 ## PDF and WhatsApp
 
-PDFs use a real Chromium print pipeline, not a screenshot. The template follows the supplied `MA-3210.pdf` structure: company header, transfer information, Item / Description / Quantity / Unit table, quantity total and employee/manager signature/date fields. Output is A4 with repeating table headings and page numbers. Original multilingual descriptions are preserved and Yekan Bakh is embedded. Registered printable barcodes are rendered as Code 128 with quiet zones.
+PDFs use a real Chromium print pipeline, not a screenshot. The template follows the supplied `MA-3210.pdf` structure: company header, transfer information, Item / Description / Quantity / Unit table, quantity total and sender/receiver signature fields (filled with the drawn signatures once signed). Output is A4 with repeating table headings and page numbers. Original multilingual descriptions are preserved and Yekan Bakh is embedded. Registered printable barcodes are rendered as Code 128 with quiet zones.
 
 PDF bytes are stored with the saved document and are protected by the same server-side access checks as transfer details. Responses are private and non-cacheable. The employee name is captured at confirmation, so delayed PDF generation cannot pick up later user-name changes. Database triggers prevent later changes to confirmed document fields or saved PDF content; audit entries are append-only. Deleting a confirmed transfer is only accepted inside the administrator delete transaction, which opts in with a transaction-local setting; direct SQL deletes remain rejected.
 
