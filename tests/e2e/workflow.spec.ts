@@ -1507,7 +1507,7 @@ test("sender and receiver sign a transfer by hand from Transfer history and the 
     where: { id: saved.id },
   });
   expect(Buffer.from(after.pdf!).equals(Buffer.from(original.pdf!))).toBe(true);
-  expect(after.signedPdfFor?.split(",")).toHaveLength(2);
+  expect(after.signedPdfFor?.split(":")[1].split(",")).toHaveLength(2);
   expect((await pdf.body()).equals(Buffer.from(after.signedPdf!))).toBe(true);
   expect(
     await db.audit.count({

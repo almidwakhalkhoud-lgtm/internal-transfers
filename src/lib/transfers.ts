@@ -192,7 +192,10 @@ export async function transferPdf(user: User, id: string) {
   if (!canAccess(user, t)) throw new HttpError(403, "Transfer access denied");
   // Once signed, the PDF people download shows the signatures. It is made
   // apart from the saved PDF, which stays as it was at confirmation.
-  const signedFor = t.signatures.map((s) => s.id).join(",");
+  // The leading layout version rebuilds signed PDFs when their layout changes.
+  const signedFor = t.signatures.length
+    ? `2:${t.signatures.map((s) => s.id).join(",")}`
+    : "";
   if (signedFor && t.signedPdf && t.signedPdfFor === signedFor)
     return { t, buffer: Buffer.from(t.signedPdf) };
   if (!signedFor && t.pdf) return { t, buffer: Buffer.from(t.pdf) };

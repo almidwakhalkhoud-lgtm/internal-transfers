@@ -124,17 +124,62 @@ td.fit{white-space:nowrap;overflow:hidden;overflow-wrap:normal}
 tr.fill td{padding:0}
 .total{text-align:right;padding:2pt 2.4pt 0;height:16pt}
 .sign{position:relative;height:20pt;break-inside:avoid}
-.sign.signed{height:34pt}
+.sign.signed{height:62pt}
 .sign .label{position:absolute;left:6pt;bottom:6pt;text-decoration:underline}
-.sign img{position:absolute;left:112pt;bottom:2pt;height:30pt;max-width:150pt}
-.sign .name{position:absolute;left:268pt;bottom:6pt;max-width:68pt;overflow:hidden;white-space:nowrap}
+.sign.signed .label{bottom:16pt}
+.sign img{position:absolute;left:110pt;bottom:1pt;width:225pt;height:58pt;object-fit:contain;object-position:left bottom}
+.sign .name{position:absolute;left:6pt;bottom:4pt;max-width:100pt;overflow:hidden;white-space:nowrap;font-size:7.5pt}
 .sign .date{position:absolute;left:340pt;bottom:6pt}
 .sign .box{position:absolute;left:441pt;bottom:2pt;width:113.4pt;height:14.4pt;border:.72pt solid #000;text-align:center;line-height:13pt}
 </style></head><body><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(416, 83, t.employee)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody></table><div class="total">${esc(t.total)}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
 }
 // Fit a long unit or quantity on one line, then stretch the table down to
 // the total and signatures on a one-page transfer, as QBM does.
-function layoutScript(pageHeight: number) {
+async function layoutScript(pageHeight: number) {
+  // Crop each drawn signature to its ink so it fills its space, however
+  // small it was drawn inside the signing box.
+  for (const img of document.querySelectorAll<HTMLImageElement>(".sign img")) {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const g = canvas.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    const { data, width, height } = g.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    let [top, left, bottom, right] = [height, width, -1, -1];
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++)
+        if (data[(y * width + x) * 4 + 3] > 16) {
+          top = Math.min(top, y);
+          bottom = Math.max(bottom, y);
+          left = Math.min(left, x);
+          right = Math.max(right, x);
+        }
+    if (bottom < 0) continue;
+    const pad = 4;
+    const crop = document.createElement("canvas");
+    crop.width = right - left + 1 + pad * 2;
+    crop.height = bottom - top + 1 + pad * 2;
+    crop
+      .getContext("2d")!
+      .drawImage(
+        canvas,
+        left,
+        top,
+        crop.width - pad * 2,
+        crop.height - pad * 2,
+        pad,
+        pad,
+        crop.width - pad * 2,
+        crop.height - pad * 2,
+      );
+    img.src = crop.toDataURL("image/png");
+    await img.decode();
+  }
   for (const cell of document.querySelectorAll<HTMLElement>("td.fit")) {
     let size = 8.3;
     while (cell.scrollWidth > cell.clientWidth && size > 5) {
