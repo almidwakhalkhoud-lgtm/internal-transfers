@@ -124,10 +124,10 @@ td.fit{white-space:nowrap;overflow:hidden;overflow-wrap:normal}
 tr.fill td{padding:0}
 .total{text-align:right;padding:2pt 2.4pt 0;height:16pt}
 .sign{position:relative;height:20pt;break-inside:avoid}
-.sign.signed{height:62pt}
+.sign.signed{height:82pt}
 .sign .label{position:absolute;left:6pt;bottom:6pt;text-decoration:underline}
 .sign.signed .label{bottom:16pt}
-.sign img{position:absolute;left:110pt;bottom:1pt;width:225pt;height:58pt;object-fit:contain;object-position:left bottom}
+.sign img{position:absolute;left:105pt;bottom:1pt;width:232pt;height:78pt;object-fit:contain;object-position:left bottom}
 .sign .name{position:absolute;left:6pt;bottom:4pt;max-width:100pt;overflow:hidden;white-space:nowrap;font-size:7.5pt}
 .sign .date{position:absolute;left:340pt;bottom:6pt}
 .sign .box{position:absolute;left:441pt;bottom:2pt;width:113.4pt;height:14.4pt;border:.72pt solid #000;text-align:center;line-height:13pt}
