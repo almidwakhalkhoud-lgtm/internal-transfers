@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "BUZZ · Internal transfers",
     short_name: "BUZZ",
-    start_url: "/notifications",
+    start_url: "/settings?tab=notifications",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#a32688",

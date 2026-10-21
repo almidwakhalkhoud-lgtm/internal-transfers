@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -210,10 +210,11 @@ test("permission denial is visible and never removes the durable notification", 
   page,
 }) => {
   const { n } = await incoming();
-  await page.goto(`/notifications?notification=${n.id}`);
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
     Notification.requestPermission = async () => "denied";
   });
+  await page.goto(`/notifications?notification=${n.id}`);
+  await expect(page).toHaveURL(/\/settings\?tab=notifications&notification=/);
   await page
     .getByRole("button", { name: "فعال‌کردن اعلان دستگاه", exact: true })
     .click();
@@ -258,9 +259,9 @@ test("administrator sees shops with no recipient and overdue transfers", async (
   });
   await auth(context, "ADMIN");
   await page.goto("/notifications");
-  await expect(
-    page.getByRole("heading", { name: "Shops needing notification setup" }),
-  ).toBeVisible();
+  await page
+    .getByText("Shops needing notification setup", { exact: true })
+    .click();
   await expect(
     page
       .locator(".notification-warning")
@@ -334,4 +335,265 @@ test("scheduled dispatch requires its secret and runs independently of a browser
       .acknowledgedAt,
   ).toBeNull();
   await anonymous.close();
+});
+
+// Exercise browser permission and subscription lifecycle without contacting a Push provider.
+declare global {
+  interface Window {
+    deviceCalls: {
+      prompts: number;
+      subscriptions: number;
+      unsubscribes: number;
+    };
+  }
+}
+async function mockDevice(
+  page: Page,
+  permission: "granted" | "default",
+  failSave = false,
+) {
+  let saved = false;
+  let failing = failSave;
+  await page.route("**/api/notifications/push{,/**}", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/status"))
+      return route.fulfill({ json: { id: saved ? "device-test" : null } });
+    if (path.endsWith("/remove")) {
+      saved = false;
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (route.request().method() === "POST") {
+      if (failing)
+        return route.fulfill({
+          status: 503,
+          json: {
+            error: "Could not check notification devices. Please retry.",
+          },
+        });
+      saved = true;
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fulfill({
+      json: {
+        publicKey: "AQID",
+        devices: saved
+          ? [
+              {
+                id: "device-test",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ]
+          : [],
+      },
+    });
+  });
+  await page.addInitScript(
+    ({ initial }) => {
+      window.deviceCalls = { prompts: 0, subscriptions: 0, unsubscribes: 0 };
+      let permission = initial;
+      Object.defineProperty(Notification, "permission", {
+        get: () => permission,
+        configurable: true,
+      });
+      Notification.requestPermission = async () => {
+        window.deviceCalls.prompts++;
+        permission = "granted";
+        return "granted";
+      };
+      let subscribed = false;
+      const sub = {
+        endpoint: "https://fcm.googleapis.com/fcm/send/test-device",
+        options: { applicationServerKey: new Uint8Array([1, 2, 3]).buffer },
+        toJSON: () => ({
+          endpoint: "https://fcm.googleapis.com/fcm/send/test-device",
+          keys: {},
+        }),
+        unsubscribe: async () => {
+          window.deviceCalls.unsubscribes++;
+          subscribed = false;
+          return true;
+        },
+      };
+      const registration = {
+        pushManager: {
+          getSubscription: async () => (subscribed ? sub : null),
+          subscribe: async () => {
+            window.deviceCalls.subscriptions++;
+            subscribed = true;
+            return sub;
+          },
+        },
+        getNotifications: async () => [],
+      };
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: {
+          register: async () => registration,
+          ready: Promise.resolve(registration),
+          getRegistration: async () => registration,
+          addEventListener() {},
+          removeEventListener() {},
+        },
+      });
+    },
+    { initial: permission },
+  );
+  return {
+    recover: () => {
+      failing = false;
+    },
+  };
+}
+
+test("settings replaces the navigation item and keeps full transfers collapsed until opened", async ({
+  page,
+}) => {
+  const { t } = await incoming({ count: 35 });
+  await incoming();
+  await incoming();
+  const adminRequests: string[] = [];
+  page.on("request", (r) => {
+    if (/\/api\/(settings|api-keys)(\?|$)/.test(new URL(r.url()).pathname))
+      adminRequests.push(r.url());
+  });
+  await page.goto("/settings");
+  await expect(page.locator(".notification-card")).toHaveCount(3);
+  await expect(page.locator("aside a[href='/notifications']")).toHaveCount(0);
+  await expect(page.locator("aside a[href='/settings']")).toBeVisible();
+  await expect(page.locator(".notification-card[open]")).toHaveCount(0);
+  await expect(
+    page.getByText("اعلان داخل برنامه برای همه کاربران روشن است."),
+  ).toBeVisible();
+  const row = page.locator(".notification-card").filter({ hasText: t.number });
+  await row.locator("summary").click();
+  await expect(row.locator(".notification-full-text")).toBeVisible();
+  await expect(row.locator(".notification-full-text")).toContainText(
+    "شرح کامل کالای 35",
+  );
+  await row.locator("summary").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".notification-card[open]")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  await expect(page.locator("aside")).toBeHidden();
+  await page.screenshot({
+    animations: "disabled",
+    path: "output/qa/notifications-compact-mobile-fa.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: "output/qa/notifications-compact-desktop-fa.png",
+    fullPage: true,
+  });
+  expect(adminRequests).toEqual([]);
+  expect((await page.request.get("/api/settings")).status()).toBe(403);
+  expect((await page.request.get("/api/api-keys")).status()).toBe(403);
+});
+
+test("previously granted permission creates and saves a device automatically and respects an explicit opt-out", async ({
+  page,
+}) => {
+  await mockDevice(page, "granted");
+  await page.goto("/settings?tab=notifications");
+  await expect(
+    page.getByText("این دستگاه ثبت شده است", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.deviceCalls)).toEqual({
+    prompts: 0,
+    subscriptions: 1,
+    unsubscribes: 0,
+  });
+  await page.getByText(/دستگاه‌ها و راهنما/).click();
+  await page.getByRole("button", { name: "حذف دستگاه", exact: true }).click();
+  await expect(
+    page.getByText("اعلان این دستگاه فعال نیست", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "فعال‌کردن اعلان دستگاه", exact: true }),
+  ).toBeEnabled();
+  expect(await page.evaluate(() => window.deviceCalls)).toEqual({
+    prompts: 0,
+    subscriptions: 0,
+    unsubscribes: 0,
+  });
+  await page
+    .getByRole("button", { name: "فعال‌کردن اعلان دستگاه", exact: true })
+    .click();
+  await expect(
+    page.getByText("این دستگاه ثبت شده است", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.deviceCalls.prompts)).toBe(0);
+});
+
+test("new devices see a single activation button without an automatic permission prompt", async ({
+  page,
+}) => {
+  await mockDevice(page, "default");
+  await page.goto("/access");
+  const activate = page.getByRole("button", {
+    name: "فعال‌کردن اعلان دستگاه",
+    exact: true,
+  });
+  await expect(activate).toBeEnabled();
+  expect(await page.evaluate(() => window.deviceCalls)).toEqual({
+    prompts: 0,
+    subscriptions: 0,
+    unsubscribes: 0,
+  });
+  await activate.click();
+  await expect(page.locator(".notification-activation")).toHaveCount(0);
+  expect(await page.evaluate(() => window.deviceCalls)).toEqual({
+    prompts: 1,
+    subscriptions: 1,
+    unsubscribes: 0,
+  });
+  await page.locator("aside a[href='/settings']").click();
+  await expect(
+    page.getByText("این دستگاه ثبت شده است", { exact: true }),
+  ).toBeVisible();
+});
+
+test("failed device persistence is visible and reconnect retries without asking permission again", async ({
+  page,
+}) => {
+  const device = await mockDevice(page, "granted", true);
+  await page.goto("/settings?tab=notifications");
+  await expect(page.locator(".notification-settings .error")).toBeVisible();
+  await expect(
+    page.getByText("این دستگاه ثبت شده است", { exact: true }),
+  ).toHaveCount(0);
+  device.recover();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(
+    page.getByText("این دستگاه ثبت شده است", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.deviceCalls.prompts)).toBe(0);
+});
+
+test("administrator general settings remain separate from notification settings", async ({
+  page,
+  context,
+}) => {
+  await auth(context, "ADMIN");
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("heading", { name: "Numbering sequence", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".notification-settings")).toHaveCount(0);
+  await page
+    .locator(".settings-tabs")
+    .getByRole("link", { name: "Notifications", exact: true })
+    .click();
+  await expect(
+    page.getByText("Notification delivery", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Numbering sequence", exact: true }),
+  ).toHaveCount(0);
 });

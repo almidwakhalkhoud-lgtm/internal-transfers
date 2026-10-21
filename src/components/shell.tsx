@@ -25,7 +25,6 @@ import {
   Globe,
   ShieldCheck,
   Menu,
-  Bell,
 } from "lucide-react";
 import { translate, type Locale } from "@/lib/i18n";
 import { api } from "@/lib/client";
@@ -113,17 +112,16 @@ export function Shell({
     [],
   );
   const nav = [
-    ["Notifications", "/notifications", Bell],
     ["Overview", "/dashboard", LayoutDashboard],
     ["New transfer", "/new-transfer", ArrowLeftRight],
     ["Requests", "/requests", ClipboardList],
     ["Transfer history", "/transfers", History],
     ["Products", "/products", Package],
     ["Locations", "/locations", MapPin],
+    ["Settings", "/settings", Settings],
   ] as const;
   const admin = [
     ["Users", "/users", Users],
-    ["Settings", "/settings", Settings],
     ["Audit log", "/audit", ShieldCheck],
   ] as const;
   const navLink = (url: string) =>
@@ -203,7 +201,7 @@ export function Shell({
               {nav
                 .filter(
                   ([, url]) =>
-                    url === "/notifications" || hasMenu(user, url.slice(1)),
+                    url === "/settings" || hasMenu(user, url.slice(1)),
                 )
                 .map(([label, url, Icon]) => (
                   <Link

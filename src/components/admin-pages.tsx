@@ -4,7 +4,7 @@ import { Form } from "@/components/form";
 import Link from "next/link";
 import { menus } from "@/lib/permissions";
 import { Skeleton } from "./skeleton";
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
@@ -528,154 +528,6 @@ export function UsersPage() {
     </>
   );
 }
-function vapidKey(base64: string) {
-  const raw = atob(
-    (base64 + "=".repeat((4 - (base64.length % 4)) % 4))
-      .replace(/-/g, "+")
-      .replace(/_/g, "/"),
-  );
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
-}
-const noSubscribe = () => () => {};
-// Turns transfer notifications on or off for the browser it is opened in.
-function Notifications() {
-  const { t } = useBuzz();
-  // Known only in the browser; null until then so the server and the first
-  // client render agree.
-  const supported = useSyncExternalStore(
-    noSubscribe,
-    () =>
-      "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window,
-    () => null,
-  );
-  const [subscription, setSubscription] = useState<PushSubscription | null>(
-    null,
-  );
-  const [server, setServer] = useState<{
-    publicKey: string;
-    missing?: string[];
-    devices: number;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    api<{ publicKey: string; devices: number }>("push")
-      .then(setServer)
-      .catch((e) => setErr(e.message));
-    if (!supported) return;
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/", updateViaCache: "none" })
-      .then((r) => r.pushManager.getSubscription())
-      .then(setSubscription)
-      .catch((e) => setErr(e.message));
-  }, [supported]);
-  async function run(task: () => Promise<string>) {
-    setBusy(true);
-    setErr("");
-    setMessage("");
-    try {
-      setMessage(await task());
-      setServer(await api("push"));
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Card className="max-w-2xl">
-      <CardHeader title={t("Transfer notifications")} />
-      <div className="flex flex-col items-start gap-4 p-4 md:p-6">
-        <p className="m-0 text-sm leading-relaxed text-muted">
-          {t(
-            "Get a notification on this device whenever anyone confirms a transfer.",
-          )}
-        </p>
-        {supported === null ? null : !supported ? (
-          <Notice tone="error">
-            {t(
-              "This browser cannot receive notifications. On iPhone, add the site to the Home Screen first and open it from there.",
-            )}
-          </Notice>
-        ) : server && server.missing?.length ? (
-          <Notice tone="error">
-            {t("Notifications are not configured on the server yet.")}{" "}
-            {t("Missing on this deployment")}:{" "}
-            <b dir="ltr">{server.missing.join(", ")}</b>
-          </Notice>
-        ) : (
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            {subscription ? (
-              <>
-                <Button
-                  disabled={busy}
-                  onClick={() =>
-                    run(async () => {
-                      await api("push/test", {});
-                      return "Test notification sent";
-                    })
-                  }
-                >
-                  {t("Send a test")}
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() =>
-                    run(async () => {
-                      await api("push/unsubscribe", {
-                        endpoint: subscription.endpoint,
-                      });
-                      await subscription.unsubscribe();
-                      setSubscription(null);
-                      return "Notifications turned off on this device";
-                    })
-                  }
-                >
-                  {t("Turn off on this device")}
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="primary"
-                disabled={busy || !server}
-                onClick={() =>
-                  run(async () => {
-                    if ((await Notification.requestPermission()) !== "granted")
-                      throw new Error(
-                        "Notifications are blocked. Allow them in the browser settings.",
-                      );
-                    const registration = await navigator.serviceWorker.ready;
-                    const sub = await registration.pushManager.subscribe({
-                      userVisibleOnly: true,
-                      applicationServerKey: vapidKey(server!.publicKey),
-                    });
-                    await api("push/subscribe", sub.toJSON());
-                    setSubscription(sub);
-                    return "Notifications turned on for this device";
-                  })
-                }
-              >
-                {t("Turn on for this device")}
-              </Button>
-            )}
-          </div>
-        )}
-        {server && server.publicKey && (
-          <p className="m-0 text-sm text-muted">
-            {t("Devices receiving notifications")}:{" "}
-            <strong className="text-ink">{server.devices}</strong>
-          </p>
-        )}
-        {message && <Notice>{t(message)}</Notice>}
-        {err && <Notice tone="error">{t(err)}</Notice>}
-      </div>
-    </Card>
-  );
-}
 type ApiKeyRecord = {
   id: string;
   name: string;
@@ -860,7 +712,7 @@ function ApiKeys() {
     </Card>
   );
 }
-export function SettingsPage() {
+export function AdminSettingsPage() {
   const { t } = useBuzz();
   const { data, error, load } = useLoad<{ value: number; request: number }>(
     "settings",
@@ -870,11 +722,9 @@ export function SettingsPage() {
   const [err, setErr] = useState("");
   return (
     <>
-      <PageTitle eyebrow="Administration" title="Settings" />
       <LoadError error={error || err} load={load} />
       {!data && !error && <Skeleton rows={3} />}
       <div className="flex flex-col gap-4 md:gap-5">
-        <Notifications />
         <ApiKeys />
         <Card className="max-w-2xl">
           <CardHeader title={t("Numbering sequence")} />
