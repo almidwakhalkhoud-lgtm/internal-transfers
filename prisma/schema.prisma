@@ -268,6 +268,7 @@ model PushDelivery {
   subscription   PushSubscription     @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   nextAttemptAt  DateTime             @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
   attempts       Int                  @default(0)
+  successes      Int                  @default(0)
   failures       Int                  @default(0)
   lastSuccessAt  DateTime?
   lastError      String?
@@ -282,4 +283,10 @@ model NotificationWorker {
   id        String   @id @default("push")
   checkedAt DateTime @default(now())
   error     String?
+}
+
+model NotificationSettings {
+  id              String @id @default("global")
+  intervalMinutes Int    @default(5)
+  maxReminders    Int?
 }

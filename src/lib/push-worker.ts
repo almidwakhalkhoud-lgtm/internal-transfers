@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import webpush from "web-push";
 import { db } from "./db";
-import { REMINDER_MS, pushPayload, retryDelay } from "./notification-content";
+import { pushPayload, retryDelay } from "./notification-content";
+
+import { getNotificationPolicy } from "./notification-settings";
+import type { NotificationPolicy } from "./notification-policy";
 
 type PushSender = typeof webpush.sendNotification;
 
@@ -43,12 +46,18 @@ export async function runNotificationTick(
         AND t.approval IN ('PENDING', 'APPROVED')
       ON CONFLICT DO NOTHING`;
     if (configured) {
+      const policy = await getNotificationPolicy();
+      const maxSends =
+        policy.maxReminders === null ? 2147483647 : policy.maxReminders + 1;
       const token = randomUUID();
       const jobs = await db.$queryRaw<{ id: string }[]>`
         WITH due AS (
           SELECT d.id FROM "PushDelivery" d
           JOIN "TransferNotification" n ON n.id = d."notificationId"
-          WHERE d."nextAttemptAt" <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          WHERE (CASE WHEN d.failures = 0 AND d."lastSuccessAt" IS NOT NULL
+            THEN d."lastSuccessAt" + (${policy.intervalMinutes} * INTERVAL '1 minute')
+            ELSE d."nextAttemptAt" END) <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+            AND d.successes < ${maxSends}
             AND (d."lockedUntil" IS NULL OR d."lockedUntil" < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'))
             AND n."acknowledgedAt" IS NULL AND n."closedAt" IS NULL
           ORDER BY d."nextAttemptAt", d.id
@@ -57,7 +66,9 @@ export async function runNotificationTick(
         UPDATE "PushDelivery" d SET "lockToken" = ${token},
           "lockedUntil" = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '2 minutes'
         FROM due WHERE d.id = due.id RETURNING d.id`;
-      await Promise.all(jobs.map((job) => deliver(job.id, token, send)));
+      await Promise.all(
+        jobs.map((job) => deliver(job.id, token, send, policy)),
+      );
     }
     await db.notificationWorker.update({
       where: { id: "push" },
@@ -74,7 +85,12 @@ export async function runNotificationTick(
   }
 }
 
-async function deliver(id: string, token: string, send: PushSender) {
+async function deliver(
+  id: string,
+  token: string,
+  send: PushSender,
+  policy: NotificationPolicy,
+) {
   const job = await db.pushDelivery.findUnique({
     where: { id },
     include: {
@@ -130,7 +146,9 @@ async function deliver(id: string, token: string, send: PushSender) {
   }
   const where = { id, lockToken: token };
   try {
-    const payload = JSON.parse(pushPayload(n.id, n.transfer, sub.user.locale));
+    const payload = JSON.parse(
+      pushPayload(n.id, n.transfer, sub.user.locale, policy),
+    );
     if (escalation)
       payload.title = `${sub.user.locale === "fa" ? "بیش از ۳۰ دقیقه بی‌پاسخ" : "Overdue acknowledgment"} · ${payload.title}`;
     await send(
@@ -151,10 +169,11 @@ async function deliver(id: string, token: string, send: PushSender) {
       where,
       data: {
         attempts: { increment: 1 },
+        successes: { increment: 1 },
         failures: 0,
         lastSuccessAt: new Date(),
         lastError: null,
-        nextAttemptAt: new Date(Date.now() + REMINDER_MS),
+        nextAttemptAt: new Date(Date.now() + policy.intervalMinutes * 60_000),
         lockToken: null,
         lockedUntil: null,
       },

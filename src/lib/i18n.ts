@@ -1,5 +1,26 @@
 export type Locale = "en" | "fa";
 export const fa: Record<string, string> = {
+  "Reminder frequency and limit": "فاصله و تعداد یادآوری‌ها",
+  "Applies to all shops and devices. The initial alert is immediate; these settings control its reminders.":
+    "برای همهٔ مغازه‌ها و دستگاه‌ها اعمال می‌شود. اعلان اول بلافاصله ارسال می‌شود؛ این تنظیمات مربوط به یادآوری‌های بعد از آن است.",
+  "Reminder interval (minutes)": "فاصلهٔ یادآوری (دقیقه)",
+  "Repeat reminders": "تکرار یادآوری",
+  "Until the shop acknowledges": "تا ثبت اطلاع مغازه",
+  "A limited number": "تعداد محدود",
+  "Reminders after the initial alert": "تعداد یادآوری بعد از اعلان اول",
+  "The limit counts successful sends per device. Failed sends retry without using the limit. Zero means the initial alert only. Inbox notifications stay saved until acknowledged or resolved.":
+    "تعداد برای ارسال‌های موفق هر دستگاه محاسبه می‌شود. ارسال ناموفق بدون کم‌شدن از تعداد دوباره امتحان می‌شود. صفر یعنی فقط اعلان اول. اعلان داخل صندوق تا ثبت اطلاع یا تعیین تکلیف محفوظ است.",
+  "Changes apply to existing pending transfers too. Scheduling runs every minute; a device may display an alert later when it reconnects.":
+    "تغییرات برای ترانسفرهای بی‌پاسخ قبلی هم اعمال می‌شود. زمان‌بندی هر دقیقه اجرا می‌شود؛ دستگاه قطع از اینترنت ممکن است اعلان را پس از اتصال نمایش دهد.",
+  "Save reminder settings": "ذخیرهٔ تنظیمات یادآوری",
+  "Reminder settings saved": "تنظیمات یادآوری ذخیره شد",
+  "Could not load reminder settings. Please retry.":
+    "دریافت تنظیمات یادآوری ناموفق بود. دوباره تلاش کنید.",
+  "Could not save reminder settings. Please retry.":
+    "ذخیرهٔ تنظیمات یادآوری ناموفق بود. دوباره تلاش کنید.",
+  "Enter valid reminder settings.": "مقادیر معتبر برای یادآوری وارد کنید.",
+  NOTIFICATION_SETTINGS_UPDATED: "تغییر تنظیمات یادآوری اعلان",
+
   "Incoming transfers": "ترانسفرهای ورودی",
   "General settings": "تنظیمات عمومی",
   "In-app notifications are always on.":

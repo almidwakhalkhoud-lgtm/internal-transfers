@@ -849,6 +849,7 @@ const auditActions = [
   "LOGIN_FAILED",
   "LOGIN_BLOCKED",
   "LOGOUT",
+  "NOTIFICATION_SETTINGS_UPDATED",
   "NOTIFICATIONS_ON",
   "NOTIFICATIONS_OFF",
   "QBM_ENTERED",
@@ -885,6 +886,7 @@ const actionNames: Record<string, string> = {
   LOGIN_FAILED: "Sign-in failed",
   LOGIN_BLOCKED: "Sign-in blocked",
   LOGOUT: "Signed out",
+  NOTIFICATION_SETTINGS_UPDATED: "Reminder settings changed",
   NOTIFICATIONS_ON: "Notifications on",
   NOTIFICATIONS_OFF: "Notifications off",
   QBM_ENTERED: "Entered in QBM",
@@ -1009,6 +1011,8 @@ function describe(a: AuditEntry, t: (key: string) => string) {
     case "API_KEY_CREATED":
     case "API_KEY_REVOKED":
       return s("name");
+    case "NOTIFICATION_SETTINGS_UPDATED":
+      return `${t("Reminder interval (minutes)")}: ${s("intervalMinutes")} · ${t("Reminders after the initial alert")}: ${d.maxReminders === null ? t("Until the shop acknowledges") : s("maxReminders")}`;
     case "SETTINGS_UPDATED":
       return s("nextRequest")
         ? `${t("Next request number")}: ${s("nextRequest")}`

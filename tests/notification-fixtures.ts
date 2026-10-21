@@ -12,7 +12,7 @@ async function main() {
       "Notification fixtures require the isolated notification test cluster",
     );
   await db.$executeRawUnsafe(
-    'TRUNCATE "TransferNotification", "PushSubscription", "PushDelivery", "NotificationWorker", "Session", "LoginAttempt", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence", "ApiKey", "StockRequest", "Signature", "QbmEntry" CASCADE',
+    'TRUNCATE "NotificationSettings", "TransferNotification", "PushSubscription", "PushDelivery", "NotificationWorker", "Session", "LoginAttempt", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence", "ApiKey", "StockRequest", "Signature", "QbmEntry" CASCADE',
   );
   await db.location.createMany({
     data: [

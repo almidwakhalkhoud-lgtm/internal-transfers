@@ -54,6 +54,10 @@ import {
   savePushSubscription,
 } from "@/lib/notifications";
 import { runNotificationTick } from "@/lib/push-worker";
+import {
+  getNotificationPolicy,
+  saveNotificationPolicy,
+} from "@/lib/notification-settings";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // PDF generation starts a browser; allow for a cold start on serverless hosts.
@@ -294,6 +298,19 @@ async function handle(
       return NextResponse.json({ ok: true });
     }
     const user = await requireUser();
+    if (path === "notifications/settings") {
+      if (user.role !== "ADMIN")
+        throw new HttpError(403, "Administrator access required");
+      if (method === "GET")
+        return NextResponse.json(await getNotificationPolicy(), {
+          headers: { "Cache-Control": "private, no-store" },
+        });
+      if (method === "PATCH") {
+        const policy = await saveNotificationPolicy(user, await req.json());
+        dispatchAfterResponse();
+        return NextResponse.json(policy);
+      }
+    }
     // Every assigned shop can use its inbox, independently of menu permissions.
     if (path === "notifications" && method === "GET") {
       const page = Math.max(
