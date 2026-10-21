@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
@@ -48,10 +48,25 @@ import {
   prepareCode,
 } from "@/lib/access-code";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  acknowledgeNotification,
+  notificationInbox,
+  savePushSubscription,
+} from "@/lib/notifications";
+import { runNotificationTick } from "@/lib/push-worker";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // PDF generation starts a browser; allow for a cold start on serverless hosts.
 export const maxDuration = 60;
+function dispatchAfterResponse() {
+  after(async () => {
+    try {
+      await runNotificationTick();
+    } catch {
+      console.error("Notification dispatch deferred to scheduled retry.");
+    }
+  });
+}
 const userSelect = {
   id: true,
   name: true,
@@ -279,6 +294,88 @@ async function handle(
       return NextResponse.json({ ok: true });
     }
     const user = await requireUser();
+    // Every assigned shop can use its inbox, independently of menu permissions.
+    if (path === "notifications" && method === "GET") {
+      const page = Math.max(
+        0,
+        Math.min(100000, Number(req.nextUrl.searchParams.get("page")) || 0),
+      );
+      return NextResponse.json(
+        await notificationInbox(
+          user,
+          Math.floor(page),
+          req.nextUrl.searchParams.get("history") === "1",
+          req.nextUrl.searchParams.get("id") || undefined,
+          req.nextUrl.searchParams.get("compact") === "1",
+        ),
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+    const acknowledgment = path.match(/^notifications\/([^/]+)\/acknowledge$/);
+    if (acknowledgment && method === "POST")
+      return NextResponse.json(
+        await acknowledgeNotification(user, acknowledgment[1]),
+      );
+    if (path === "notifications/push") {
+      if (method === "GET") {
+        const devices = await db.pushSubscription.findMany({
+          where: { userId: user.id },
+          select: { id: true, createdAt: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+        });
+        return NextResponse.json(
+          { publicKey: process.env.VAPID_PUBLIC_KEY ?? null, devices },
+          { headers: { "Cache-Control": "private, no-store" } },
+        );
+      }
+      if (method === "POST") {
+        if (
+          !process.env.VAPID_PUBLIC_KEY ||
+          !process.env.VAPID_PRIVATE_KEY ||
+          !process.env.VAPID_SUBJECT
+        )
+          throw new HttpError(
+            503,
+            "Background notifications are not configured. Contact your administrator.",
+          );
+        const data = z
+          .object({
+            endpoint: z.url().max(2000),
+            keys: z.object({
+              p256dh: z.string().regex(/^[A-Za-z0-9_-]{87}$/),
+              auth: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
+            }),
+          })
+          .parse(await req.json());
+        await savePushSubscription(user, data);
+        dispatchAfterResponse();
+        return NextResponse.json({ ok: true });
+      }
+    }
+    if (path === "notifications/push/remove" && method === "POST") {
+      const { id, endpoint } = z
+        .object({
+          id: z.string().max(200).optional(),
+          endpoint: z.string().max(2000).optional(),
+        })
+        .refine((v) => !!(v.id || v.endpoint))
+        .parse(await req.json());
+      await db.pushSubscription.deleteMany({
+        where: { userId: user.id, ...(id ? { id } : { endpoint }) },
+      });
+      return NextResponse.json({ ok: true });
+    }
+    if (path === "notifications/push/status" && method === "POST") {
+      const { endpoint } = z
+        .object({ endpoint: z.string().max(2000) })
+        .parse(await req.json());
+      const device = await db.pushSubscription.findFirst({
+        where: { endpoint, userId: user.id },
+        select: { id: true },
+      });
+      return NextResponse.json({ id: device?.id ?? null });
+    }
+
     if (path === "me") {
       if (method === "PATCH") {
         const { locale } = z
@@ -295,6 +392,13 @@ async function handle(
       });
     }
     if (path === "logout" && method === "POST") {
+      const { endpoint } = z
+        .object({ endpoint: z.string().max(2000).optional() })
+        .parse(await req.json());
+      if (endpoint)
+        await db.pushSubscription.deleteMany({
+          where: { userId: user.id, endpoint },
+        });
       const token = (await cookies()).get("buzz-session")?.value;
       const leaving = await currentUser();
       if (leaving)
@@ -497,6 +601,7 @@ async function handle(
     }
     if (path === "transfers" && method === "POST") {
       const t = await confirmTransfer(user, await req.json());
+      dispatchAfterResponse();
       try {
         await transferPdf(user, t.id);
       } catch {
@@ -651,6 +756,7 @@ async function handle(
       }
       if (action === "fulfill" && method === "POST") {
         const t = await fulfillRequest(user, id, await req.json());
+        dispatchAfterResponse();
         try {
           await transferPdf(user, t.id);
         } catch {
@@ -995,11 +1101,8 @@ async function handle(
           }),
         })
         .parse(await req.json());
-      await db.pushSubscription.upsert({
-        where: { endpoint: v.endpoint },
-        create: { userId: user.id, endpoint: v.endpoint, ...v.keys },
-        update: { userId: user.id, ...v.keys },
-      });
+      await savePushSubscription(user, v);
+      dispatchAfterResponse();
       await audit(user.id, "NOTIFICATIONS_ON", user.id, await requestOrigin());
       return NextResponse.json({ ok: true });
     }

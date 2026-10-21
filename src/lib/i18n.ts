@@ -1,5 +1,79 @@
 export type Locale = "en" | "fa";
 export const fa: Record<string, string> = {
+  "device deliveries failed and are retrying automatically. Inbox notifications remain available.":
+    "ارسال اعلان دستگاه ناموفق بوده و خودکار دوباره امتحان می‌شود. اعلان‌های کامل در صندوق در دسترس‌اند.",
+  Notifications: "مرکز اعلان‌ها",
+  "incoming transfers need acknowledgment":
+    "ترانسفر ورودی در انتظار ثبت اطلاع مغازه",
+  "Review notifications": "بررسی اعلان‌ها",
+  "Reminders repeat every 5 minutes until your shop explicitly acknowledges.":
+    "یادآوری هر ۵ دقیقه تا ثبت صریح اطلاع مغازه ادامه دارد.",
+  "Notification connection interrupted. Retrying automatically; pending alerts remain saved.":
+    "ارتباط اعلان‌ها قطع شده است. اتصال خودکار دوباره امتحان می‌شود؛ اعلان‌های بی‌پاسخ محفوظ‌اند.",
+  "Incoming transfers remain here until acknowledged or resolved. Opening a notification does not stop reminders.":
+    "ترانسفرهای ورودی تا ثبت اطلاع یا تعیین تکلیف در اینجا می‌مانند. بازکردن اعلان یادآوری را متوقف نمی‌کند.",
+  "Notification delivery": "تنظیمات دریافت اعلان",
+  "The full notification is saved in your inbox. Device notifications may shorten long text; open the inbox to read every item and remark.":
+    "متن کامل اعلان در این صندوق ذخیره می‌شود. اعلان دستگاه ممکن است متن بلند را کوتاه کند؛ برای مشاهده تمام اقلام و توضیحات، مرکز اعلان‌ها را باز کنید.",
+  "Enable device notifications": "فعال‌کردن اعلان دستگاه",
+  "Check this device": "بررسی اعلان این دستگاه",
+  "Enabling…": "در حال فعال‌سازی…",
+  "Enable sound reminders": "فعال‌کردن یادآوری صوتی",
+  "Sound reminders on": "یادآوری صوتی روشن است",
+  "This device is registered": "این دستگاه ثبت شده است",
+  "This device is not registered": "اعلان این دستگاه فعال نیست",
+  "Background notifications are not configured. Contact your administrator.":
+    "اعلان پس‌زمینه هنوز تنظیم نشده است؛ با مدیر سامانه تماس بگیرید.",
+  "Background notification worker is unavailable. Contact your administrator; inbox alerts remain saved.":
+    "سرویس ارسال اعلان پس‌زمینه در دسترس نیست. به مدیر اطلاع دهید؛ اعلان‌های صندوق محفوظ‌اند.",
+  "Device delivery depends on permission, connectivity and operating system settings. Sound needs an open app and must be enabled after opening it.":
+    "نمایش اعلان دستگاه به مجوز، اتصال و تنظیمات سیستم‌عامل وابسته است. یادآوری صوتی نیاز به بازبودن برنامه و فعال‌سازی پس از بازکردن آن دارد.",
+  "Registered devices": "دستگاه‌های ثبت‌شده",
+  Device: "دستگاه",
+  "Remove device": "حذف دستگاه",
+  "Needs acknowledgment": "نیازمند ثبت اطلاع",
+  "All notifications": "همه اعلان‌ها",
+  Refresh: "به‌روزرسانی",
+  "Loading notifications…": "در حال دریافت اعلان‌ها…",
+  "Acknowledge transfer": "از ترانسفر مطلع شدم",
+  "Saving acknowledgment…": "در حال ثبت اطلاع…",
+  "Acknowledgment saved. Reminders for this transfer have stopped for your shop.":
+    "اطلاع مغازه ثبت شد. یادآوری این ترانسفر برای مغازه شما متوقف شد.",
+  "Acknowledged by": "ثبت اطلاع توسط",
+  "Reminders stopped because this transfer was received or rejected.":
+    "یادآوری به علت دریافت یا ردشدن ترانسفر متوقف شده است.",
+  "Notification not found or access has changed.":
+    "اعلان پیدا نشد یا دسترسی شما تغییر کرده است.",
+  "No notifications yet.": "هنوز اعلانی ثبت نشده است.",
+  "All incoming transfers have been acknowledged.":
+    "اطلاع همه ترانسفرهای ورودی ثبت شده است.",
+  "transfers have waited over 30 minutes for acknowledgment.":
+    "ترانسفر بیش از ۳۰ دقیقه در انتظار ثبت اطلاع مانده است.",
+  "Shops needing notification setup": "مغازه‌های نیازمند تنظیم اعلان",
+  pending: "در انتظار اطلاع",
+  "active recipients": "گیرنده فعال",
+  "registered devices": "دستگاه ثبت‌شده",
+  "Manage shop access": "مدیریت دسترسی مغازه‌ها",
+  "Could not check notification devices. Please retry.":
+    "بررسی دستگاه‌های اعلان ممکن نشد. دوباره تلاش کنید.",
+  "Could not remove notification device. Please retry.":
+    "حذف دستگاه اعلان ممکن نشد. دوباره تلاش کنید.",
+  "Background notifications need HTTPS and a supported browser. On iPhone, add this app to your Home Screen first.":
+    "اعلان پس‌زمینه به HTTPS و مرورگر پشتیبانی‌شده نیاز دارد. در آیفون ابتدا برنامه را به صفحه اصلی اضافه کنید.",
+  "Notifications are blocked. Allow notifications in your browser and device settings, then try again.":
+    "اعلان‌ها مسدودند. مجوز اعلان را در تنظیمات مرورگر و دستگاه فعال کنید و دوباره تلاش کنید.",
+  "BUZZ notifications enabled": "اعلان‌های BUZZ فعال شد",
+  "Incoming transfers will appear here. Review and acknowledge them in your notification inbox.":
+    "ترانسفرهای ورودی در اینجا اعلام می‌شوند. آن‌ها را در مرکز اعلان‌ها بررسی و اطلاع خود را ثبت کنید.",
+  "Sound could not be enabled. Please try again.":
+    "فعال‌کردن صدا ممکن نشد. دوباره تلاش کنید.",
+  "Sound is not supported by this browser.":
+    "این مرورگر از یادآوری صوتی پشتیبانی نمی‌کند.",
+  "Notification not found": "اعلان پیدا نشد",
+  "Unsupported push service": "سرویس اعلان دستگاه پشتیبانی نمی‌شود",
+  "Device limit reached. Remove an old notification device first.":
+    "حداکثر ۱۰ دستگاه قابل ثبت است. ابتدا یکی از دستگاه‌های قبلی را حذف کنید.",
+
   "New access code": "کد ورود جدید",
   "Save access code": "ذخیره کد ورود",
   "Enter your access code": "کد ورود خود را وارد کنید",

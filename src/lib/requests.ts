@@ -12,7 +12,7 @@ import {
   type RequestLine,
   type SnapshotLine,
 } from "./domain";
-import { insertTransfer, announceTransfer } from "./transfers";
+import { insertTransfer } from "./transfers";
 import { sendPush } from "./push";
 type User = NonNullable<
   Awaited<ReturnType<typeof import("./auth").currentUser>>
@@ -252,12 +252,6 @@ export async function fulfillRequest(user: User, id: string, input: unknown) {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
-    await announceTransfer(transfer);
-    await notifyLocation(transfer.requesterId, {
-      title: `${transfer.number} · ${transfer.source} → ${transfer.destination}`,
-      body: `${transfer.creatorName} · ${(transfer.lines as SnapshotLine[]).length} items · ${transfer.total}`,
-      url: `/transfers/${transfer.id}`,
-    });
     return transfer;
   } catch (e) {
     if (

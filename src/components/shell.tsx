@@ -25,11 +25,17 @@ import {
   Globe,
   ShieldCheck,
   Menu,
+  Bell,
 } from "lucide-react";
 import { translate, type Locale } from "@/lib/i18n";
 import { api } from "@/lib/client";
 import { hasMenu } from "@/lib/permissions";
 import { buttonStyles, cx, iconButton } from "./ui";
+import {
+  NotificationProvider,
+  NotificationBell,
+  NotificationBanner,
+} from "./notifications";
 export type Viewer = {
   menus: string[];
   id: string;
@@ -107,6 +113,7 @@ export function Shell({
     [],
   );
   const nav = [
+    ["Notifications", "/notifications", Bell],
     ["Overview", "/dashboard", LayoutDashboard],
     ["New transfer", "/new-transfer", ArrowLeftRight],
     ["Requests", "/requests", ClipboardList],
@@ -130,92 +137,75 @@ export function Shell({
     "mb-2 px-3 text-[11px] font-medium tracking-widest text-subtle uppercase";
   return (
     <Context.Provider value={{ user, locale, t, toast }}>
-      <div
-        className="min-h-dvh bg-page font-sans text-ink"
-        dir={locale === "fa" ? "rtl" : "ltr"}
-        lang={locale}
-      >
+      <NotificationProvider>
         <div
-          className="pointer-events-none fixed inset-x-4 top-16 z-[120] flex flex-col items-center gap-2 md:top-20"
-          aria-live="assertive"
+          className="min-h-dvh bg-page font-sans text-ink"
+          dir={locale === "fa" ? "rtl" : "ltr"}
+          lang={locale}
         >
-          {toasts.map((x) => (
-            <div
-              key={x.id}
-              role={x.tone === "error" ? "alert" : "status"}
-              className={cx(
-                "pointer-events-auto w-full max-w-sm animate-[float-in_160ms_ease-out] rounded-xl border px-4 py-3 text-sm shadow-lg",
-                x.tone === "error"
-                  ? "border-red-100 bg-red-50 text-red-800"
-                  : "border-emerald-100 bg-emerald-50 text-emerald-800",
-              )}
-            >
-              {x.message}
-            </div>
-          ))}
-        </div>
-        {open && (
-          <button
-            type="button"
-            className="fixed inset-0 z-30 border-0 bg-zinc-900/30 lg:hidden"
-            aria-label={t("Close menu")}
-            onClick={() => setOpen(false)}
-          />
-        )}
-        <aside
-          id="workspace-navigation"
-          ref={sidebar}
-          className={cx(
-            "fixed inset-y-0 start-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-e border-line bg-white px-4 pt-6 transition-[translate,visibility] duration-200 lg:w-60",
-            // Closed, the drawer is also invisible so Tab cannot reach it.
-            open
-              ? "visible translate-x-0 shadow-xl"
-              : "max-lg:invisible max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
-          )}
-        >
-          <Link
-            className="mb-8 flex flex-col items-start px-3"
-            href="/dashboard"
-            onClick={() => setOpen(false)}
+          <div
+            className="pointer-events-none fixed inset-x-4 top-16 z-[120] flex flex-col items-center gap-2 md:top-20"
+            aria-live="assertive"
           >
-            <Image
-              src="/logo.jpeg"
-              width={116}
-              height={68}
-              alt="BUZZ"
-              priority
-              className="h-11 w-32 object-cover mix-blend-multiply"
-            />
-            <span className="mt-1.5 text-[10px] tracking-[0.2em] text-subtle">
-              INTERNAL TRANSFERS
-            </span>
-          </Link>
-          <div className={sectionLabel}>{t("Workspace")}</div>
-          <nav className="flex flex-col gap-1">
-            {nav
-              .filter(([, url]) => hasMenu(user, url.slice(1)))
-              .map(([label, url, Icon]) => (
-                <Link
-                  key={url}
-                  onClick={() => setOpen(false)}
-                  className={navLink(url)}
-                  href={url}
-                >
-                  <Icon size={18} />
-                  {t(label)}
-                  {label === "New transfer" && (
-                    <Plus size={15} className="ms-auto text-subtle" />
-                  )}
-                </Link>
-              ))}
-          </nav>
-          {user.role === "ADMIN" && (
-            <>
-              <div className={cx(sectionLabel, "mt-7")}>
-                {t("Administration")}
+            {toasts.map((x) => (
+              <div
+                key={x.id}
+                role={x.tone === "error" ? "alert" : "status"}
+                className={cx(
+                  "pointer-events-auto w-full max-w-sm animate-[float-in_160ms_ease-out] rounded-xl border px-4 py-3 text-sm shadow-lg",
+                  x.tone === "error"
+                    ? "border-red-100 bg-red-50 text-red-800"
+                    : "border-emerald-100 bg-emerald-50 text-emerald-800",
+                )}
+              >
+                {x.message}
               </div>
-              <nav className="flex flex-col gap-1">
-                {admin.map(([label, url, Icon]) => (
+            ))}
+          </div>
+          {open && (
+            <button
+              type="button"
+              className="fixed inset-0 z-30 border-0 bg-zinc-900/30 lg:hidden"
+              aria-label={t("Close menu")}
+              onClick={() => setOpen(false)}
+            />
+          )}
+          <aside
+            id="workspace-navigation"
+            ref={sidebar}
+            className={cx(
+              "fixed inset-y-0 start-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-e border-line bg-white px-4 pt-6 transition-[translate,visibility] duration-200 lg:w-60",
+              // Closed, the drawer is also invisible so Tab cannot reach it.
+              open
+                ? "visible translate-x-0 shadow-xl"
+                : "max-lg:invisible max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full",
+            )}
+          >
+            <Link
+              className="mb-8 flex flex-col items-start px-3"
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+            >
+              <Image
+                src="/logo.jpeg"
+                width={116}
+                height={68}
+                alt="BUZZ"
+                priority
+                className="h-11 w-32 object-cover mix-blend-multiply"
+              />
+              <span className="mt-1.5 text-[10px] tracking-[0.2em] text-subtle">
+                INTERNAL TRANSFERS
+              </span>
+            </Link>
+            <div className={sectionLabel}>{t("Workspace")}</div>
+            <nav className="flex flex-col gap-1">
+              {nav
+                .filter(
+                  ([, url]) =>
+                    url === "/notifications" || hasMenu(user, url.slice(1)),
+                )
+                .map(([label, url, Icon]) => (
                   <Link
                     key={url}
                     onClick={() => setOpen(false)}
@@ -224,97 +214,134 @@ export function Shell({
                   >
                     <Icon size={18} />
                     {t(label)}
+                    {label === "New transfer" && (
+                      <Plus size={15} className="ms-auto text-subtle" />
+                    )}
                   </Link>
                 ))}
-              </nav>
-            </>
-          )}
-          <div className="mt-auto pt-6">
-            <div className="mx-3 mb-4 flex items-center gap-2 text-xs leading-relaxed text-subtle">
-              <ShieldCheck size={16} />
-              {t("Access is checked on the server.")}
-            </div>
-            <div className="-mx-4 flex items-center gap-3 border-t border-line px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
-                {user.name.slice(0, 2).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <strong className="block truncate text-sm font-semibold">
-                  {user.name}
-                </strong>
-                <small className="block text-xs text-subtle">
-                  {t(user.role === "ADMIN" ? "Administrator" : "Staff")}
-                </small>
+            </nav>
+            {user.role === "ADMIN" && (
+              <>
+                <div className={cx(sectionLabel, "mt-7")}>
+                  {t("Administration")}
+                </div>
+                <nav className="flex flex-col gap-1">
+                  {admin.map(([label, url, Icon]) => (
+                    <Link
+                      key={url}
+                      onClick={() => setOpen(false)}
+                      className={navLink(url)}
+                      href={url}
+                    >
+                      <Icon size={18} />
+                      {t(label)}
+                    </Link>
+                  ))}
+                </nav>
+              </>
+            )}
+            <div className="mt-auto pt-6">
+              <div className="mx-3 mb-4 flex items-center gap-2 text-xs leading-relaxed text-subtle">
+                <ShieldCheck size={16} />
+                {t("Access is checked on the server.")}
               </div>
-              <button
-                className={cx(iconButton, "ms-auto")}
-                aria-label={t("Sign out")}
-                onClick={async () => {
-                  await api("logout", {});
-                  router.push("/login");
-                  router.refresh();
-                }}
-              >
-                <LogOut size={18} className="rtl:-scale-x-100" />
-              </button>
+              <div className="-mx-4 flex items-center gap-3 border-t border-line px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+                  {user.name.slice(0, 2).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <strong className="block truncate text-sm font-semibold">
+                    {user.name}
+                  </strong>
+                  <small className="block text-xs text-subtle">
+                    {t(user.role === "ADMIN" ? "Administrator" : "Staff")}
+                  </small>
+                </div>
+                <button
+                  className={cx(iconButton, "ms-auto")}
+                  aria-label={t("Sign out")}
+                  onClick={async () => {
+                    let endpoint: string | undefined;
+                    try {
+                      const registration =
+                        await navigator.serviceWorker?.getRegistration("/");
+                      endpoint = (
+                        await registration?.pushManager.getSubscription()
+                      )?.endpoint;
+                      for (const notification of (await registration?.getNotifications()) ??
+                        [])
+                        notification.close();
+                    } catch {
+                      /* Device APIs are optional for sign-out. */
+                    }
+                    await api("logout", { endpoint });
+                    router.push("/login");
+                    router.refresh();
+                  }}
+                >
+                  <LogOut size={18} className="rtl:-scale-x-100" />
+                </button>
+              </div>
             </div>
-          </div>
-        </aside>
-        <div className="flex min-h-dvh min-w-0 flex-col lg:ps-60">
-          <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-white/90 px-2 backdrop-blur md:h-16 md:px-8">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-subtle md:gap-3">
-              <button
-                className={cx(iconButton, "lg:hidden")}
-                ref={menuButton}
-                aria-label="Menu"
-                aria-expanded={open}
-                aria-controls="workspace-navigation"
-                onClick={() => setOpen(!open)}
-              >
-                <Menu size={22} />
-              </button>
-              <span className="hidden md:inline">{t("Workspace")}</span>
-              <span className="hidden text-zinc-300 md:inline">/</span>
-              <strong className="truncate font-semibold text-ink">
-                {t(
-                  [...nav, ...admin].find(([, url]) =>
-                    path.startsWith(url),
-                  )?.[0] ?? "Transfer details",
-                )}
-              </strong>
-            </div>
-            <div className="flex items-center gap-5 pe-2 md:pe-0">
-              <span
-                dir="ltr"
-                className="hidden text-xs tracking-wide text-subtle md:inline"
-              >
-                MEHDI ALI TRADING Co.
+          </aside>
+          <div className="flex min-h-dvh min-w-0 flex-col lg:ps-60">
+            <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-line bg-white/90 px-2 backdrop-blur md:h-16 md:px-8">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-subtle md:gap-3">
+                <button
+                  className={cx(iconButton, "lg:hidden")}
+                  ref={menuButton}
+                  aria-label="Menu"
+                  aria-expanded={open}
+                  aria-controls="workspace-navigation"
+                  onClick={() => setOpen(!open)}
+                >
+                  <Menu size={22} />
+                </button>
+                <span className="hidden md:inline">{t("Workspace")}</span>
+                <span className="hidden text-zinc-300 md:inline">/</span>
+                <strong className="truncate font-semibold text-ink">
+                  {t(
+                    [...nav, ...admin].find(([, url]) =>
+                      path.startsWith(url),
+                    )?.[0] ?? "Transfer details",
+                  )}
+                </strong>
+              </div>
+              <div className="flex items-center gap-5 pe-2 md:pe-0">
+                <NotificationBell />
+                <span
+                  dir="ltr"
+                  className="hidden text-xs tracking-wide text-subtle md:inline"
+                >
+                  MEHDI ALI TRADING Co.
+                </span>
+                <button
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm text-muted hover:bg-zinc-50"
+                  onClick={async () => {
+                    const value = locale === "en" ? "fa" : "en";
+                    await api("me", { locale: value }, "PATCH");
+                    setLocale(value);
+                  }}
+                >
+                  <Globe size={16} />
+                  {locale === "en" ? "فارسی" : "English"}
+                </button>
+              </div>
+            </header>
+            <NotificationBanner />
+            <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 pt-5 pb-8 md:px-8 md:pt-8">
+              {children}
+            </main>
+            <footer className="flex items-center justify-between gap-3 border-t border-line px-4 py-4 text-xs text-subtle md:px-8">
+              <span>
+                <b className="font-semibold text-muted">BUZZ</b> /{" "}
+                {t("Internal transfers")}
               </span>
-              <button
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm text-muted hover:bg-zinc-50"
-                onClick={async () => {
-                  const value = locale === "en" ? "fa" : "en";
-                  await api("me", { locale: value }, "PATCH");
-                  setLocale(value);
-                }}
-              >
-                <Globe size={16} />
-                {locale === "en" ? "فارسی" : "English"}
-              </button>
-            </div>
-          </header>
-          <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 pt-5 pb-8 md:px-8 md:pt-8">
-            {children}
-          </main>
-          <footer className="flex items-center justify-between gap-3 border-t border-line px-4 py-4 text-xs text-subtle md:px-8">
-            <span>
-              <b className="font-semibold text-muted">BUZZ</b> /{" "}
-              {t("Internal transfers")}
-            </span>
-            <span dir="ltr">MEHDI ALI TRADING Co.</span>
-          </footer>
+              <span dir="ltr">MEHDI ALI TRADING Co.</span>
+            </footer>
+          </div>
         </div>
-      </div>
+      </NotificationProvider>
     </Context.Provider>
   );
 }

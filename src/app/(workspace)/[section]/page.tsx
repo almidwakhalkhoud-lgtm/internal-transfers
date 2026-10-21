@@ -3,6 +3,7 @@ import { hasMenu, landingPage } from "@/lib/permissions";
 import { currentUser } from "@/lib/auth";
 import { Dashboard, HistoryPage, ProductsPage } from "@/components/data-pages";
 import { RequestsPage } from "@/components/request-pages";
+import { NotificationsPage } from "@/components/notifications";
 import {
   LocationsPage,
   UsersPage,
@@ -17,13 +18,18 @@ export default async function Page({
   const { section } = await params;
   const viewer = await currentUser();
   if (!viewer) redirect("/login");
-  if (section !== "access" && !hasMenu(viewer, section))
+  if (
+    !["access", "notifications"].includes(section) &&
+    !hasMenu(viewer, section)
+  )
     redirect(landingPage(viewer));
   if (["users", "settings", "audit"].includes(section)) {
     const user = await currentUser();
     if (user?.role !== "ADMIN") redirect("/dashboard");
   }
   switch (section) {
+    case "notifications":
+      return <NotificationsPage />;
     case "access":
       return (
         <p>

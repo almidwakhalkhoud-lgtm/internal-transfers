@@ -57,13 +57,15 @@ model User {
 
 // A browser that asked to be told about new transfers (Web Push).
 model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  createdAt DateTime @default(now())
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String         @unique
+  p256dh     String
+  auth       String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deliveries PushDelivery[]
 }
 
 model Session {
@@ -120,26 +122,26 @@ model Sequence {
 }
 
 model Transfer {
-  id            String             @id @default(cuid())
-  number        String             @unique
-  key           String             @unique
+  id            String                @id @default(cuid())
+  number        String                @unique
+  key           String                @unique
   creatorId     String
-  creatorName   String             @default("")
-  creator       User               @relation(fields: [creatorId], references: [id])
+  creatorName   String                @default("")
+  creator       User                  @relation(fields: [creatorId], references: [id])
   sourceId      String
   destinationId String
   source        String
   destination   String
   date          DateTime
   remarks       String
-  confirmedAt   DateTime           @default(now())
-  status        ConfirmationStatus @default(CONFIRMED)
-  approval      Approval           @default(PENDING)
+  confirmedAt   DateTime              @default(now())
+  status        ConfirmationStatus    @default(CONFIRMED)
+  approval      Approval              @default(PENDING)
   lines         Json
-  total         Decimal            @db.Decimal(20, 3)
+  total         Decimal               @db.Decimal(20, 3)
   pdf           Bytes?
   pdfHash       String?
-  pdfError      Boolean            @default(false)
+  pdfError      Boolean               @default(false)
   qbmEntry      QbmEntry?
   request       StockRequest?
   signatures    Signature[]
@@ -147,6 +149,7 @@ model Transfer {
   // it shows, so a new signature makes it stale. The saved PDF never changes.
   signedPdf     Bytes?
   signedPdfFor  String?
+  notification  TransferNotification?
 
   @@index([creatorId, confirmedAt])
   @@index([approval, confirmedAt])
@@ -239,4 +242,44 @@ model Signature {
 
   @@unique([transferId, side])
   @@index([userId])
+}
+
+model TransferNotification {
+  id               String         @id @default(cuid())
+  transferId       String         @unique
+  transfer         Transfer       @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  destinationId    String
+  createdAt        DateTime       @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
+  acknowledgedAt   DateTime?
+  acknowledgedBy   String?
+  acknowledgedName String?
+  closedAt         DateTime?
+  deliveries       PushDelivery[]
+
+  @@index([destinationId, acknowledgedAt, closedAt, createdAt])
+  @@index([acknowledgedAt, closedAt, createdAt])
+}
+
+model PushDelivery {
+  id             String               @id @default(cuid())
+  notificationId String
+  notification   TransferNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  subscription   PushSubscription     @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  nextAttemptAt  DateTime             @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"))
+  attempts       Int                  @default(0)
+  failures       Int                  @default(0)
+  lastSuccessAt  DateTime?
+  lastError      String?
+  lockToken      String?
+  lockedUntil    DateTime?
+
+  @@unique([notificationId, subscriptionId])
+  @@index([nextAttemptAt, lockedUntil])
+}
+
+model NotificationWorker {
+  id        String   @id @default("push")
+  checkedAt DateTime @default(now())
+  error     String?
 }

@@ -1,0 +1,14 @@
+node_modules/
+.git/
+.vercel/
+.next-test/
+.next/
+.postgres/
+.env*
+output/
+playwright-report/
+test-results/
+tests/
+tools/
+YekanBakh 3 ProPlus [@fontiranir]/
+*.tsbuildinfo
