@@ -140,7 +140,7 @@ export const fa: Record<string, string> = {
   "Select location": "انتخاب مکان",
   "Transfer date": "تاریخ انتقال",
   "Transfer number": "شماره انتقال",
-  "Assigned on save": "هنگام ذخیره تعیین می‌شود",
+  "Assigned on confirmation": "هنگام تأیید تعیین می‌شود",
   Draft: "پیش‌نویس",
   Confirmed: "تأیید شده",
   Pending: "در انتظار بررسی",
@@ -492,8 +492,19 @@ export const fa: Record<string, string> = {
   "Delete draft": "حذف پیش‌نویس",
   "Draft deleted": "پیش‌نویس حذف شد",
   "Draft not found": "پیش‌نویس پیدا نشد",
-  "This saved draft and all of its items will be removed. Its number will not be reused.":
-    "این پیش‌نویس و همهٔ اقلام آن حذف می‌شود. شمارهٔ آن دوباره استفاده نخواهد شد.",
+  "This saved draft and all of its items will be removed. Drafts hold no transfer number, so none is lost.":
+    "این پیش‌نویس و همهٔ اقلام آن حذف می‌شود. پیش‌نویس شمارهٔ انتقال ندارد، پس هیچ شماره‌ای از دست نمی‌رود.",
+  "Last transfer number": "آخرین شمارهٔ انتقال",
+  "Change number": "تغییر شماره",
+  "New number": "شمارهٔ جدید",
+  "Current number": "شمارهٔ فعلی",
+  "Save number": "ثبت شماره",
+  "Transfer number changed": "شمارهٔ انتقال تغییر کرد",
+  "Another transfer already has this number":
+    "این شماره قبلاً به انتقال دیگری داده شده است",
+  "Use this when the number is out of step with QBM. The PDF is made again with the new number, and the next transfer number in Settings follows the highest number.":
+    "وقتی شماره با QBM نمی‌خواند از این استفاده کنید. PDF با شمارهٔ جدید دوباره ساخته می‌شود و شمارهٔ انتقال بعدی در تنظیمات خودش با بالاترین شماره هماهنگ می‌شود.",
+  TRANSFER_RENUMBERED: "تغییر شمارهٔ انتقال",
   "Delete transfer": "حذف انتقال",
   "The confirmed transfer and its saved PDF will be permanently deleted. A full copy is kept in the audit log.":
     "انتقال تأییدشده و PDF ذخیره‌شدهٔ آن برای همیشه حذف می‌شود. یک نسخهٔ کامل در گزارش رویدادها نگهداری می‌شود.",

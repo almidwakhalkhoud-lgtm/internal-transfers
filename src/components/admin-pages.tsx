@@ -906,7 +906,7 @@ export function SettingsPage() {
                 )}
               </p>
               <p className="m-0 text-sm text-muted">
-                {t("Last reserved number")}:{" "}
+                {t("Last transfer number")}:{" "}
                 <strong className="text-ink">{data.value}</strong>
               </p>
               <Field label={t("Next transfer number")} className="sm:max-w-xs">
@@ -1009,6 +1009,7 @@ const auditActions = [
   "TRANSFER_CONFIRMED",
   "TRANSFER_DELETED",
   "TRANSFER_SIGNED",
+  "TRANSFER_RENUMBERED",
   "DRAFT_DELETED",
   "APPROVED",
   "REJECTED",
@@ -1049,6 +1050,7 @@ const actionNames: Record<string, string> = {
   TRANSFER_CONFIRMED: "Transfer confirmed",
   TRANSFER_DELETED: "Transfer deleted",
   TRANSFER_SIGNED: "Transfer signed",
+  TRANSFER_RENUMBERED: "Transfer number changed",
   DRAFT_DELETED: "Draft deleted",
   APPROVED: "Transfer approved",
   REJECTED: "Transfer rejected",
@@ -1117,8 +1119,10 @@ function describe(a: AuditEntry, t: (key: string) => string) {
       ]
         .filter(Boolean)
         .join(" · ");
+    case "TRANSFER_RENUMBERED":
+      return `${s("from")} → ${s("to")}`;
     case "DRAFT_DELETED":
-      return s("number");
+      return s("number") || (s("lines") && `${s("lines")} ${t("items")}`);
     case "PRODUCT_CREATED":
       return [s("code"), s("description"), `${t("Units")}: ${list(d.units)}`]
         .filter(Boolean)

@@ -130,13 +130,15 @@ test("real product code → TAB → quantity → conditional unit → confirm �
     .click();
   const review = page.getByRole("dialog", { name: "Review transfer" });
   await expect(review.getByText("2.625", { exact: true })).toBeVisible();
-  await expect(review).toContainText(/[A-Z]{2}-\d{4}/);
+  // The number is taken on confirmation, then shown on the success screen.
+  await expect(review).toContainText("Assigned on confirmation");
   await review
     .getByRole("button", { name: "Confirm and generate PDF" })
     .click();
   await expect(
     page.getByRole("heading", { name: "Transfer Confirmed Successfully" }),
   ).toBeVisible();
+  await expect(page.getByText(/^[A-Z]{2}-\d{4}$/)).toBeVisible();
   const downloadButton = page.getByRole("button", {
     name: "Download PDF",
     exact: true,
@@ -757,19 +759,22 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
   await page.getByLabel("Quantity 1", { exact: true }).fill("7.25");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Draft saved");
-  const number = await page
-    .getByLabel("Transfer number", { exact: true })
-    .inputValue();
+  // A draft holds no number; one is taken only on confirmation.
+  await expect(page.getByLabel("Transfer number", { exact: true })).toHaveValue(
+    "Assigned on confirmation",
+  );
+  const saved = await db.draft.findFirstOrThrow({
+    where: { userId: "test-staff" },
+    orderBy: { updatedAt: "desc" },
+  });
   await page.reload();
   await page.getByText(/^Saved drafts/).click();
   await page
-    .getByRole("button", { name: `Open draft · ${number}`, exact: true })
+    .locator(`[data-draft="${saved.id}"]`)
+    .getByRole("button", { name: /^Open draft · Main → Al Azaiba · / })
     .click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue(
     "7.25",
-  );
-  await expect(page.getByLabel("Transfer number", { exact: true })).toHaveValue(
-    number,
   );
 });
 test("mobile layout remains contained, offers navigation and keeps confirmation accessible", async ({
@@ -1251,9 +1256,6 @@ test("saved drafts can be deleted by their owner only", async ({
       unit: p.units[0],
     },
   ]);
-  const { number } = await db.draft.findUniqueOrThrow({
-    where: { id: input.key },
-  });
   const adminContext = await browser.newContext();
   const admin = await adminContext.newPage();
   await login(admin, "admin@buzz.test");
@@ -1268,16 +1270,15 @@ test("saved drafts can be deleted by their owner only", async ({
   await page.goto("/new-transfer");
   await page.getByText(/^Saved drafts/).click();
   await page
-    .getByRole("button", { name: `Delete draft · ${number}`, exact: true })
+    .locator(`[data-draft="${input.key}"]`)
+    .getByRole("button", { name: /^Delete draft · / })
     .click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Delete draft", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Draft deleted");
-  await expect(
-    page.getByRole("button", { name: `Open draft · ${number}`, exact: true }),
-  ).toHaveCount(0);
+  await expect(page.locator(`[data-draft="${input.key}"]`)).toHaveCount(0);
   expect(await db.draft.findUnique({ where: { id: input.key } })).toBeNull();
   expect(
     await db.audit.count({
@@ -1542,5 +1543,103 @@ test("sender and receiver sign a transfer by hand from Transfer history and the 
   await admin.goto("/transfers?sign=waiting");
   await waiting;
   await expect(admin.getByRole("link", { name: saved.number })).toHaveCount(0);
+  await adminContext.close();
+});
+test("drafts take no number, the latest deleted number comes back and admins can renumber", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const line = () => [
+    {
+      productId: p.id,
+      version: p.updatedAt.toISOString(),
+      quantity: "1",
+      unit: "",
+    },
+  ];
+  const counter = async () =>
+    (await db.sequence.findUnique({ where: { id: "transfer" } }))?.value ?? 0;
+  // Saving and deleting a draft does not use a number up.
+  const before = await counter();
+  const dropped = await draft(page.request, line());
+  expect(
+    (
+      await page.request.delete(`/api/drafts/${dropped.key}`, {
+        headers: { Origin: origin },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(await counter()).toBe(before);
+  const first = await (
+    await post(page.request, "transfers", await draft(page.request, line()))
+  ).json();
+  expect(first.number).toBe(`MA-${String(before + 1).padStart(4, "0")}`);
+  // Deleting the latest transfer gives its number back to the next one.
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  expect(
+    (
+      await admin.request.delete(`/api/transfers/${first.id}`, {
+        headers: { Origin: origin },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(await counter()).toBe(before);
+  const again = await (
+    await post(page.request, "transfers", await draft(page.request, line()))
+  ).json();
+  expect(again.number).toBe(first.number);
+  // Only administrators renumber, and never onto a number in use.
+  const renumber = (who: Page, id: string, number: number) =>
+    who.request.patch(`/api/transfers/${id}`, {
+      data: { number },
+      headers: { Origin: origin },
+    });
+  expect((await renumber(page, again.id, 9000)).status()).toBe(403);
+  const other = await db.transfer.findFirstOrThrow({
+    where: { id: { not: again.id } },
+  });
+  expect(
+    (
+      await renumber(admin, again.id, Number(/(\d+)$/.exec(other.number)![1]))
+    ).status(),
+  ).toBe(409);
+  // Through the page: the PDF is made again and Settings follows.
+  await admin.goto(`/transfers/${again.id}`);
+  await admin.getByRole("button", { name: "Change number" }).click();
+  const modal = admin.getByRole("dialog");
+  await modal.getByLabel("New number").fill("9000");
+  await expect(modal.getByText("MA-9000")).toBeVisible();
+  await modal.getByRole("button", { name: "Save number" }).click();
+  await expect(
+    admin.getByRole("heading", { name: "MA-9000", exact: true }),
+  ).toBeVisible();
+  const renumbered = await db.transfer.findUniqueOrThrow({
+    where: { id: again.id },
+  });
+  expect(renumbered.number).toBe("MA-9000");
+  expect(await counter()).toBe(9000);
+  const pdf = await admin.request.get(`/api/transfers/${again.id}/pdf`);
+  expect(pdf.ok()).toBe(true);
+  expect(
+    (await db.transfer.findUniqueOrThrow({ where: { id: again.id } })).pdfHash,
+  ).not.toBe(null);
+  expect(
+    await db.audit.count({
+      where: { action: "TRANSFER_RENUMBERED", target: again.id },
+    }),
+  ).toBe(1);
+  // The database still refuses a number change made any other way.
+  await expect(
+    db.transfer.update({
+      where: { id: again.id },
+      data: { number: "MA-9001" },
+    }),
+  ).rejects.toThrow();
   await adminContext.close();
 });

@@ -56,9 +56,6 @@ import {
   totalQuantity,
   formatTotal,
   renamable,
-  numberFor,
-  routeCode,
-  sequenceOf,
 } from "@/lib/domain";
 export type Product = {
   updatedAt: string;
@@ -79,6 +76,7 @@ export type Line = {
   error?: string;
   duplicateAccepted?: boolean;
 };
+type SavedDraft = { id: string; updatedAt: string; data: DraftData };
 type DraftData = {
   sourceId: string;
   destinationId: string;
@@ -248,7 +246,7 @@ export function TransferForm({
   initialKey: string;
   initialLineId: string;
 }) {
-  const { t } = useBuzz();
+  const { t, locale } = useBuzz();
   const editor = useLines(initialLineId);
   const { lines, setLines, validLines, total } = editor;
   const [locations, setLocations] = useState<
@@ -263,7 +261,6 @@ export function TransferForm({
   );
   const [remarks, setRemarks] = useState("");
   const [key, setKey] = useState(initialKey);
-  const [number, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -273,26 +270,23 @@ export function TransferForm({
     number: string;
     pdfReady: boolean;
   } | null>(null);
-  const [drafts, setDrafts] = useState<
-    { id: string; number: string; data: DraftData }[]
-  >([]);
-  const [deleting, setDeleting] = useState<{
-    id: string;
-    number: string;
-  } | null>(null);
+  const [drafts, setDrafts] = useState<SavedDraft[]>([]);
+  const [deleting, setDeleting] = useState<SavedDraft | null>(null);
   const data = { sourceId, destinationId, date, remarks, lines };
-  // The reserved counter is fixed; its letters follow the chosen route.
-  const liveNumber =
-    number &&
-    numberFor(
-      sequenceOf(number),
-      name(sourceId) && name(destinationId)
-        ? routeCode(name(sourceId)!, name(destinationId)!)
-        : "",
-    );
+  // A draft has no number yet, so it is named by its route and save time.
+  const draftLabel = (d: SavedDraft) =>
+    `${name(d.data.sourceId) ?? "—"} → ${name(d.data.destinationId) ?? "—"} · ${new Date(
+      d.updatedAt,
+    ).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Dubai",
+    })}`;
   const loadDrafts = useCallback(
     () =>
-      api<{ id: string; number: string; data: DraftData }[]>("drafts")
+      api<SavedDraft[]>("drafts")
         .then(setDrafts)
         .catch((e) => setError(e.message)),
     [],
@@ -312,11 +306,9 @@ export function TransferForm({
     loadDrafts();
   }, [loadDrafts]); // initial server state
   async function save() {
-    const result = await api<{ number: string }>("drafts", { id: key, data });
-    setNumber(result.number);
+    await api("drafts", { id: key, data });
     setNotice("Draft saved");
     loadDrafts();
-    return result.number;
   }
   const reviewForm = useForm<DraftData>({
     resolver: async (values): Promise<ResolverResult<DraftData>> => {
@@ -420,7 +412,6 @@ export function TransferForm({
   }
   function reset() {
     setKey(crypto.randomUUID());
-    setNumber("");
     setLines([blank()]);
     setSuccess(null);
     setNotice("");
@@ -538,7 +529,7 @@ export function TransferForm({
             <Field label={t("Transfer number")} className="max-lg:col-start-3">
               <input
                 className={inputStyles}
-                value={liveNumber || t("Assigned on save")}
+                value={t("Assigned on confirmation")}
                 readOnly
                 dir="ltr"
               />
@@ -559,12 +550,15 @@ export function TransferForm({
             </summary>
             <div className="flex flex-col gap-2 px-3 pb-3">
               {drafts.map((d) => (
-                <span key={d.id} className="flex items-center gap-2">
+                <span
+                  key={d.id}
+                  data-draft={d.id}
+                  className="flex items-center gap-2"
+                >
                   <Button
                     className="flex-1 justify-start"
                     onClick={() => {
                       setKey(d.id);
-                      setNumber(d.number);
                       if (own.length !== 1) setSource(d.data.sourceId);
                       setDestination(d.data.destinationId);
                       setDate(d.data.date);
@@ -573,7 +567,7 @@ export function TransferForm({
                       setNotice("");
                     }}
                   >
-                    {t("Open draft")} · <span dir="ltr">{d.number}</span>
+                    {t("Open draft")} · {draftLabel(d)}
                   </Button>
                   <button
                     type="button"
@@ -581,9 +575,9 @@ export function TransferForm({
                       iconButton,
                       "hover:bg-red-50 hover:text-red-700",
                     )}
-                    aria-label={`${t("Delete draft")} · ${d.number}`}
+                    aria-label={`${t("Delete draft")} · ${draftLabel(d)}`}
                     disabled={busy}
-                    onClick={() => setDeleting({ id: d.id, number: d.number })}
+                    onClick={() => setDeleting(d)}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -605,7 +599,9 @@ export function TransferForm({
               variant="danger"
               className="col-span-2"
               disabled={busy}
-              onClick={() => setDeleting({ id: key, number })}
+              onClick={() =>
+                setDeleting(drafts.find((d) => d.id === key) ?? null)
+              }
             >
               <Trash2 size={16} />
               {t("Delete draft")}
@@ -637,14 +633,12 @@ export function TransferForm({
         <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
           <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
             {t(
-              "This saved draft and all of its items will be removed. Its number will not be reused.",
+              "This saved draft and all of its items will be removed. Drafts hold no transfer number, so none is lost.",
             )}
           </p>
           <dl className={reviewGrid}>
-            <dt className="text-subtle">{t("Transfer number")}</dt>
-            <dd className={reviewValue} dir="ltr">
-              {deleting.number}
-            </dd>
+            <dt className="text-subtle">{t("Draft")}</dt>
+            <dd className={reviewValue}>{draftLabel(deleting)}</dd>
           </dl>
           <div className={modalActions}>
             <Button
@@ -675,9 +669,7 @@ export function TransferForm({
           </p>
           <dl className={reviewGrid}>
             <dt className="text-subtle">{t("Transfer number")}</dt>
-            <dd className={reviewValue} dir="ltr">
-              {liveNumber}
-            </dd>
+            <dd className={reviewValue}>{t("Assigned on confirmation")}</dd>
             <dt className="text-subtle">{t("From location")}</dt>
             <dd className={reviewValue}>
               {locations.find((l) => l.id === sourceId)?.name}

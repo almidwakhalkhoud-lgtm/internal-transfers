@@ -20,6 +20,7 @@ import {
   FileText,
   Trash2,
   Plus,
+  Hash,
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { hasMenu } from "@/lib/permissions";
@@ -49,6 +50,8 @@ import {
   validateCatalog,
   unitsFromDescription,
   outerUnits,
+  numberFor,
+  sequenceOf,
 } from "@/lib/domain";
 type Summary = {
   id: string;
@@ -596,6 +599,7 @@ export function DetailPage({ id }: { id: string }) {
   const [err, setErr] = useState("");
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   async function remove() {
@@ -689,8 +693,15 @@ export function DetailPage({ id }: { id: string }) {
                   </Button>
                 ))}
                 <Button
-                  variant="danger"
                   className="col-span-2 sm:ms-auto"
+                  onClick={() => setRenumbering(true)}
+                >
+                  <Hash size={16} />
+                  {t("Change number")}
+                </Button>
+                <Button
+                  variant="danger"
+                  className="col-span-2"
                   onClick={() => {
                     setReason("");
                     setDeleting(true);
@@ -702,6 +713,17 @@ export function DetailPage({ id }: { id: string }) {
               </div>
             )}
           </Card>
+          {renumbering && (
+            <RenumberModal
+              id={data.id}
+              number={data.number}
+              onClose={() => setRenumbering(false)}
+              onSaved={() => {
+                setRenumbering(false);
+                load();
+              }}
+            />
+          )}
           {deleting && (
             <Modal
               title="Delete transfer"
@@ -840,11 +862,88 @@ export function DetailPage({ id }: { id: string }) {
           />
           <SuccessActions
             transfer={data}
-            version={data.signatures.map((s) => s.side).join(",")}
+            version={[data.number, ...data.signatures.map((s) => s.side)].join(
+              ",",
+            )}
           />
         </div>
       )}
     </>
+  );
+}
+// Brings a transfer's number back in step with QBM. The route letters stay;
+// the server rebuilds the PDF and moves the Settings counter to follow.
+function RenumberModal({
+  id,
+  number,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  number: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t, toast } = useBuzz();
+  const [value, setValue] = useState(String(sequenceOf(number)));
+  const [busy, setBusy] = useState(false);
+  const dash = number.lastIndexOf("-");
+  const valid = /^[1-9][0-9]{0,8}$/.test(value);
+  const next = valid
+    ? numberFor(Number(value), dash < 0 ? "" : number.slice(0, dash))
+    : "";
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`transfers/${id}`, { number: Number(value) }, "PATCH");
+      toast(t("Transfer number changed"), "ok");
+      onSaved();
+    } catch (e) {
+      toast(t((e as Error).message));
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Change number" onClose={() => !busy && onClose()}>
+      <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
+        {t(
+          "Use this when the number is out of step with QBM. The PDF is made again with the new number, and the next transfer number in Settings follows the highest number.",
+        )}
+      </p>
+      <Field label={t("New number")}>
+        <input
+          className={inputStyles}
+          inputMode="numeric"
+          dir="ltr"
+          data-initial-focus
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))}
+        />
+      </Field>
+      <dl className="m-0 mt-4 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+        <dt className="text-subtle">{t("Current number")}</dt>
+        <dd className="m-0 text-end font-semibold" dir="ltr">
+          {number}
+        </dd>
+        <dt className="text-subtle">{t("New number")}</dt>
+        <dd className="m-0 text-end font-semibold" dir="ltr">
+          {next || "—"}
+        </dd>
+      </dl>
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <Button disabled={busy} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={busy || !valid || next === number}
+          onClick={save}
+        >
+          <Hash size={16} />
+          {t(busy ? "Please wait…" : "Save number")}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 export function ProductsPage() {

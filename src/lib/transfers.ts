@@ -8,7 +8,6 @@ import {
   canAccess,
   numberFor,
   routeCode,
-  sequenceOf,
   renamable,
   type SnapshotLine,
 } from "./domain";
@@ -85,7 +84,24 @@ export async function announceTransfer(t: {
     url: `/transfers/${t.id}`,
   }).catch((e) => console.error("Transfer notification failed", e));
 }
+// Two confirmations at once both take the counter; the database lets one
+// through and the other is simply run again with the next number.
+class CounterBusy extends Error {}
 export async function confirmTransfer(user: User, input: unknown) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await confirmOnce(user, input);
+    } catch (e) {
+      if (!(e instanceof CounterBusy)) throw e;
+      if (attempt === 5)
+        throw new HttpError(
+          409,
+          "The catalog or draft changed. Please review and retry.",
+        );
+    }
+  }
+}
+async function confirmOnce(user: User, input: unknown) {
   const parsed = transferInput.safeParse(input);
   if (!parsed.success)
     throw new HttpError(
@@ -150,9 +166,15 @@ export async function confirmTransfer(user: User, input: unknown) {
             ...(line.note ? { note: line.note } : {}),
           };
         });
+        // The number is taken only now, so drafts never use numbers up.
+        const { value } = await tx.sequence.upsert({
+          where: { id: "transfer" },
+          create: { id: "transfer", value: 1 },
+          update: { value: { increment: 1 } },
+        });
         const transfer = await insertTransfer(tx, user, {
           key: data.key,
-          sequence: sequenceOf(draft.number),
+          sequence: value,
           source: locations.find((l) => l.id === data.sourceId)!,
           destination: locations.find((l) => l.id === data.destinationId)!,
           date: new Date(data.date),
@@ -174,6 +196,7 @@ export async function confirmTransfer(user: User, input: unknown) {
     ) {
       const saved = await db.transfer.findUnique({ where: { key: data.key } });
       if (saved && saved.creatorId === user.id) return saved;
+      if (e.code === "P2034") throw new CounterBusy();
       throw new HttpError(
         409,
         "The catalog or draft changed. Please review and retry.",

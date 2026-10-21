@@ -179,9 +179,9 @@ model StockRequest {
   @@index([requesterId, status])
 }
 
+// An unconfirmed transfer. It holds no number; one is taken on confirmation.
 model Draft {
   id        String   @id
-  number    String   @unique
   userId    String
   data      Json
   updatedAt DateTime @updatedAt

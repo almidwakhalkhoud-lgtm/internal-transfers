@@ -19,11 +19,10 @@ import {
   canAccess,
   canSupply,
   identifier,
+  numberFor,
   signableSides,
   signaturePng,
   signatureSides,
-  numberFor,
-  routeCode,
   sequenceOf,
   validateCatalog,
   type CatalogRow,
@@ -464,43 +463,14 @@ async function handle(
           throw new HttpError(403, "Draft access denied");
         if (await db.transfer.findUnique({ where: { key: input.id } }))
           throw new HttpError(409, "Already confirmed");
+        // A draft holds no transfer number; confirmation takes the next one,
+        // so a deleted draft never leaves a gap in the numbering.
         const data = input.data as Prisma.InputJsonObject;
-        const route = await db.location.findMany({
-          where: {
-            id: {
-              in: [data.sourceId, data.destinationId].filter(
-                (id): id is string => typeof id === "string",
-              ),
-            },
-          },
-        });
-        const source = route.find((l) => l.id === data.sourceId);
-        const destination = route.find((l) => l.id === data.destinationId);
-        const draft = await db.$transaction(async (tx) => {
-          const value = existing
-            ? sequenceOf(existing.number)
-            : (
-                await tx.sequence.upsert({
-                  where: { id: "transfer" },
-                  create: { id: "transfer", value: 1 },
-                  update: { value: { increment: 1 } },
-                })
-              ).value;
-          const number = numberFor(
-            value,
-            source && destination
-              ? routeCode(source.name, destination.name)
-              : "",
-          );
-          if (existing)
-            return tx.draft.update({
-              where: { id: input.id },
-              data: { data, number },
+        const draft = existing
+          ? await db.draft.update({ where: { id: input.id }, data: { data } })
+          : await db.draft.create({
+              data: { id: input.id, userId: user.id, data },
             });
-          return tx.draft.create({
-            data: { id: input.id, userId: user.id, number, data },
-          });
-        });
         return NextResponse.json(draft);
       }
     }
@@ -512,13 +482,14 @@ async function handle(
         });
         if (!draft || draft.userId !== user.id)
           throw new HttpError(404, "Draft not found");
+        const { lines } = draft.data as { lines?: unknown };
         await tx.draft.delete({ where: { id: draft.id } });
         await tx.audit.create({
           data: {
             actor: user.id,
             action: "DRAFT_DELETED",
             target: draft.id,
-            detail: { number: draft.number },
+            detail: { lines: Array.isArray(lines) ? lines.length : 0 },
           },
         });
       });
@@ -744,9 +715,71 @@ async function handle(
       }
       if (method === "PATCH") {
         await requireUser(true);
+        const body = await req.json();
+        if (body && typeof body === "object" && "number" in body) {
+          // An administrator brings a number back in step with QBM. The
+          // route letters stay; only the counter part changes.
+          const { number } = z
+            .object({ number: z.number().int().positive().max(2147483647) })
+            .parse(body);
+          const dash = t.number.lastIndexOf("-");
+          const next = numberFor(
+            number,
+            dash < 0 ? "" : t.number.slice(0, dash),
+          );
+          if (next !== t.number)
+            await db.$transaction(async (tx) => {
+              const taken = await tx.$queryRaw<{ id: string }[]>`
+                SELECT id FROM "Transfer" WHERE id <> ${t.id}
+                AND substring("number" from '([0-9]+)$')::int = ${number} LIMIT 1`;
+              if (taken.length)
+                throw new HttpError(
+                  409,
+                  "Another transfer already has this number",
+                );
+              // The guard trigger lets the number change, and the saved PDF
+              // that prints the old one be cleared, only after this opt-in.
+              await tx.$queryRaw`SELECT set_config('buzz.transfer_renumber', 'allowed', true)`;
+              const result = await tx.transfer.updateMany({
+                where: { id: t.id, number: t.number },
+                data: {
+                  number: next,
+                  pdf: null,
+                  pdfHash: null,
+                  pdfError: false,
+                  signedPdf: null,
+                  signedPdfFor: null,
+                },
+              });
+              if (result.count !== 1)
+                throw new HttpError(
+                  409,
+                  "Transfer changed. Refresh and retry.",
+                );
+              // The Settings counter follows: the next transfer takes the
+              // number after the highest one.
+              const [{ highest }] = await tx.$queryRaw<
+                { highest: number | null }[]
+              >`SELECT max(substring("number" from '([0-9]+)$')::int) AS highest FROM "Transfer"`;
+              await tx.sequence.upsert({
+                where: { id: "transfer" },
+                create: { id: "transfer", value: highest ?? 0 },
+                update: { value: highest ?? 0 },
+              });
+              await tx.audit.create({
+                data: {
+                  actor: user.id,
+                  action: "TRANSFER_RENUMBERED",
+                  target: t.id,
+                  detail: { from: t.number, to: next },
+                },
+              });
+            });
+          return NextResponse.json({ ok: true, number: next });
+        }
         const { approval } = z
           .object({ approval: z.enum(["APPROVED", "REJECTED", "RECEIVED"]) })
-          .parse(await req.json());
+          .parse(body);
         if (!allowedTransition(t.approval, approval))
           throw new HttpError(409, "Invalid status transition");
         await db.$transaction(async (tx) => {
@@ -779,6 +812,12 @@ async function handle(
           const result = await tx.transfer.deleteMany({ where: { id: t.id } });
           if (result.count !== 1)
             throw new HttpError(409, "Transfer changed. Refresh and retry.");
+          // The latest transfer's number goes back to the counter, so the
+          // next transfer takes it and the numbering stays in step with QBM.
+          await tx.sequence.updateMany({
+            where: { id: "transfer", value: sequenceOf(t.number) },
+            data: { value: { decrement: 1 } },
+          });
           await tx.audit.create({
             data: {
               actor: user.id,
@@ -1294,11 +1333,10 @@ async function handle(
             create: { id: "transfer", value: 0 },
             update: { value: { increment: 0 } },
           });
-          // The counter may go back only past numbers nothing holds.
-          const held = [
-            ...(await tx.transfer.findMany({ select: { number: true } })),
-            ...(await tx.draft.findMany({ select: { number: true } })),
-          ].map((r) => sequenceOf(r.number));
+          // The counter may go back only past numbers no transfer holds.
+          const held = (
+            await tx.transfer.findMany({ select: { number: true } })
+          ).map((r) => sequenceOf(r.number));
           if (held.some((n) => n >= v.nextValue))
             throw new HttpError(
               400,
