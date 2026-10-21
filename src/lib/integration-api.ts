@@ -5,11 +5,12 @@ import { z } from "zod";
 import { db } from "./db";
 import { audit, hash, HttpError } from "./auth";
 import { allowedTransition, type SnapshotLine } from "./domain";
+import { transferPdf } from "./transfers";
 
 // Read access for programs such as the QBM entry app. They send
 // `Authorization: Bearer buzz_…`; there is no cookie, session or CSRF here,
-// and a key can only list transfers and record that one was typed into QBM,
-// plus approve it afterwards when an administrator allowed that key to.
+// and a key can only list transfers, read their PDFs and record that one was
+// typed into QBM, plus approve it afterwards when an administrator allowed that key to.
 export function newApiKey() {
   const key = `buzz_${randomBytes(32).toString("base64url")}`;
   return { key, prefix: key.slice(0, 12), hash: hash(key) };
@@ -122,6 +123,19 @@ export async function integrationApi(
   }
   if (parts.length === 2 && method === "GET")
     return NextResponse.json(shape(await transferFor(parts[1])));
+  // The transfer's PDF as people download it here (signatures included), so
+  // the QBM program can keep a copy beside the transfer it entered.
+  if (parts.length === 3 && parts[2] === "pdf" && method === "GET") {
+    const t = await transferFor(parts[1]);
+    const { buffer } = await transferPdf(null, t.id);
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${t.number}.pdf"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
   if (parts.length === 3 && parts[2] === "qbm") {
     const t = await transferFor(parts[1]);
     if (method === "POST") {

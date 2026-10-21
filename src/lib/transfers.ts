@@ -206,13 +206,16 @@ async function confirmOnce(user: User, input: unknown) {
   }
 }
 const generating = new Map<string, Promise<Buffer>>();
-export async function transferPdf(user: User, id: string) {
+// `user` is null for an API key: it may already list and read every
+// transfer, so it may read their PDFs too (the QBM program archives them).
+export async function transferPdf(user: User | null, id: string) {
   const t = await db.transfer.findUnique({
     where: { id },
     include: { signatures: { orderBy: { signedAt: "asc" } } },
   });
   if (!t) throw new HttpError(404, "Transfer not found");
-  if (!canAccess(user, t)) throw new HttpError(403, "Transfer access denied");
+  if (user && !canAccess(user, t))
+    throw new HttpError(403, "Transfer access denied");
   // Once signed, the PDF people download shows the signatures. It is made
   // apart from the saved PDF, which stays as it was at confirmation.
   // The leading layout version rebuilds signed PDFs when their layout changes.
