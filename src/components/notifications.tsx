@@ -9,11 +9,15 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, BellRing, CheckCheck, RefreshCw, Volume2 } from "lucide-react";
 import { api } from "@/lib/client";
 import { REMINDER_MS } from "@/lib/notification-content";
-import { useBuzz, PageTitle } from "./shell";
+import { useBuzz } from "./shell";
+
+import { useDeviceNotifications } from "./use-device-notifications";
+
+const notificationUrl = "/settings?tab=notifications";
 
 type Notice = {
   id: string;
@@ -53,10 +57,12 @@ const NotificationContext = createContext<{
   refresh: () => void;
   sound: boolean;
   enableSound: () => void;
+  device?: ReturnType<typeof useDeviceNotifications>;
 }>({ error: "", refresh: () => {}, sound: false, enableSound: () => {} });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user, locale } = useBuzz();
+  const device = useDeviceNotifications(user.id);
   const [inbox, setInbox] = useState<Inbox>();
   const [error, setError] = useState("");
   const [sound, setSound] = useState(false);
@@ -64,24 +70,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const busy = useRef(false);
   const alive = useRef(true);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => {
-    // Rebind an already permitted device after signing in, including shared devices.
-    if (
-      !window.isSecureContext ||
-      !("serviceWorker" in navigator) ||
-      !("Notification" in window) ||
-      Notification.permission !== "granted"
-    )
-      return;
-    void (async () => {
-      const registration = await navigator.serviceWorker.register(
-        "/notifications-sw.js",
-        { scope: "/" },
-      );
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) await api("notifications/push", subscription.toJSON());
-    })().catch(() => {});
-  }, [user.id]);
   const refresh = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
@@ -197,7 +185,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   };
   return (
     <NotificationContext.Provider
-      value={{ inbox, error, refresh, sound, enableSound }}
+      value={{ inbox, error, refresh, sound, enableSound, device }}
     >
       {children}
     </NotificationContext.Provider>
@@ -209,7 +197,7 @@ export function NotificationBell() {
   const { inbox, error } = useContext(NotificationContext);
   return (
     <Link
-      href="/notifications"
+      href={notificationUrl}
       className={`notification-bell ${inbox?.pending ? "has-pending" : ""}`}
       aria-label={`${t("Notifications")}${inbox ? ` (${inbox.pending})` : ""}`}
     >
@@ -224,10 +212,37 @@ export function NotificationBell() {
 }
 
 export function NotificationBanner() {
-  const { t } = useBuzz();
-  const { inbox, error, refresh } = useContext(NotificationContext);
+  const { t, user } = useBuzz();
+  const { inbox, error, refresh, device } = useContext(NotificationContext);
+  const path = usePathname();
+  const query = useSearchParams();
+  const inNotificationSettings =
+    path === "/settings" &&
+    (user.role !== "ADMIN" || query.get("tab") === "notifications");
   return (
     <div className="notification-banners">
+      {!inNotificationSettings && device?.ready && !device.enabled && (
+        <div className="notification-activation">
+          <Bell size={20} />
+          <span>
+            {t(
+              "Enable alerts on this device so incoming transfers reach you when the app is closed.",
+            )}
+          </span>
+          <button
+            className="button primary"
+            disabled={device.busy}
+            onClick={() => void device.enable()}
+          >
+            {t(device.busy ? "Enabling…" : "Enable device notifications")}
+          </button>
+          {device.error && (
+            <p className="error" role="alert">
+              {t(device.error)}
+            </p>
+          )}
+        </div>
+      )}
       {error && (
         <div className="notification-connection" role="alert">
           <span>{t(error)}</span>
@@ -237,7 +252,7 @@ export function NotificationBanner() {
           <Link href="/login">{t("Sign in")}</Link>
         </div>
       )}
-      {!!inbox?.pending && (
+      {!!inbox?.pending && !inNotificationSettings && (
         <div className="incoming-banner" role="status" aria-live="polite">
           <BellRing size={22} />
           <div>
@@ -251,7 +266,10 @@ export function NotificationBanner() {
               )}
             </small>
           </div>
-          <Link className="button primary" href="/notifications">
+          <Link
+            className="button primary"
+            href={`${notificationUrl}&notification=${encodeURIComponent(inbox.items[0]?.id ?? "")}`}
+          >
             {t("Review notifications")}
           </Link>
         </div>
@@ -260,130 +278,36 @@ export function NotificationBanner() {
   );
 }
 
-type Device = { id: string; createdAt: string; updatedAt: string };
 function PushSettings() {
-  const { t, user } = useBuzz();
-  const { inbox, sound, enableSound } = useContext(NotificationContext);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [enabled, setEnabled] = useState(false);
-  const [currentDevice, setCurrentDevice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const supported = () =>
-    window.isSecureContext &&
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window;
-  const load = useCallback(async () => {
-    const settings = await api<{ publicKey: string | null; devices: Device[] }>(
-      "notifications/push",
-    );
-    setDevices(settings.devices);
-    if (
-      supported() &&
-      Notification.permission === "granted" &&
-      settings.publicKey
-    ) {
-      const registration = await navigator.serviceWorker.register(
-        "/notifications-sw.js",
-        { scope: "/" },
-      );
-      const sub = await registration.pushManager.getSubscription();
-      if (sub) {
-        const device = await api<{ id: string | null }>(
-          "notifications/push/status",
-          { endpoint: sub.endpoint },
-        );
-        setCurrentDevice(device.id);
-        setEnabled(!!device.id);
-      } else setEnabled(false);
-    } else setEnabled(false);
-  }, []);
-  useEffect(() => {
-    let active = true;
-    void Promise.resolve()
-      .then(() => (active ? load() : undefined))
-      .catch(() => {
-        if (active)
-          setError("Could not check notification devices. Please retry.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [load, user.id]);
-  const enable = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      if (!supported())
-        throw new Error(
-          "Background notifications need HTTPS and a supported browser. On iPhone, add this app to your Home Screen first.",
-        );
-      // Keep permission request directly inside the user's click gesture.
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted")
-        throw new Error(
-          "Notifications are blocked. Allow notifications in your browser and device settings, then try again.",
-        );
-      const { publicKey } = await api<{ publicKey: string | null }>(
-        "notifications/push",
-      );
-      if (!publicKey || !inbox?.pushConfigured)
-        throw new Error(
-          "Background notifications are not configured. Contact your administrator.",
-        );
-      await navigator.serviceWorker.register("/notifications-sw.js", {
-        scope: "/",
-      });
-      const registration = await navigator.serviceWorker.ready;
-      const bytes = Uint8Array.from(
-        atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")),
-        (c) => c.charCodeAt(0),
-      );
-      let sub = await registration.pushManager.getSubscription();
-      if (
-        sub &&
-        sub.options.applicationServerKey &&
-        new Uint8Array(sub.options.applicationServerKey).join() !== bytes.join()
-      ) {
-        await sub.unsubscribe();
-        sub = null;
-      }
-      sub ??= await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: bytes,
-      });
-      await api("notifications/push", sub.toJSON());
-      setEnabled(true);
-      await load();
-      await registration.showNotification(t("BUZZ notifications enabled"), {
-        body: t(
-          "Incoming transfers will appear here. Review and acknowledge them in your notification inbox.",
-        ),
-        icon: "/logo.jpeg",
-        tag: "buzz-enabled",
-      });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { t, locale } = useBuzz();
+  const { inbox, sound, enableSound, device } = useContext(NotificationContext);
+  if (!device) return null;
   return (
     <section className="card notification-settings">
-      <h2>{t("Notification delivery")}</h2>
-      <p>
-        {t(
-          "The full notification is saved in your inbox. Device notifications may shorten long text; open the inbox to read every item and remark.",
-        )}
-      </p>
+      <div className="notification-toolbar notification-delivery-heading">
+        <div>
+          <h2>{t("Notification delivery")}</h2>
+          <p>{t("In-app notifications are always on.")}</p>
+        </div>
+        <span className={`badge ${device.enabled ? "approved" : "pending"}`}>
+          {t(
+            device.enabled
+              ? "This device is registered"
+              : "This device is not registered",
+          )}
+        </span>
+      </div>
       <div className="notification-toolbar">
-        <button className="button primary" onClick={enable} disabled={busy}>
+        <button
+          className="button primary"
+          onClick={() => void device.enable()}
+          disabled={device.busy || !device.ready}
+        >
           <Bell size={17} />
           {t(
-            busy
+            device.busy
               ? "Enabling…"
-              : enabled
+              : device.enabled
                 ? "Check this device"
                 : "Enable device notifications",
           )}
@@ -392,20 +316,11 @@ function PushSettings() {
           <Volume2 size={17} />
           {t(sound ? "Sound reminders on" : "Enable sound reminders")}
         </button>
-        <span className={`badge ${enabled ? "approved" : "pending"}`}>
-          {t(
-            enabled
-              ? "This device is registered"
-              : "This device is not registered",
-          )}
-        </span>
       </div>
-      {error && (
+      {device.error && (
         <p className="error" role="alert">
-          {t(error)}{" "}
-          <button onClick={() => void load().catch(() => {})}>
-            {t("Retry")}
-          </button>
+          {t(device.error)}{" "}
+          <button onClick={() => void device.retry()}>{t("Retry")}</button>
         </p>
       )}
       {inbox && (!inbox.pushConfigured || !inbox.workerHealthy) && (
@@ -418,71 +333,47 @@ function PushSettings() {
         </p>
       )}
       {!!inbox?.retryingDevices && (
-        <p className="notification-warning" role="status">
+        <p className="notification-warning">
           {inbox.retryingDevices}{" "}
           {t(
             "device deliveries failed and are retrying automatically. Inbox notifications remain available.",
           )}
         </p>
       )}
-      <small>
-        {t(
-          "Device delivery depends on permission, connectivity and operating system settings. Sound needs an open app and must be enabled after opening it.",
-        )}
-      </small>
-      {devices.length > 0 && (
-        <details>
-          <summary>
-            {t("Registered devices")} ({devices.length})
-          </summary>
-          <ul className="notification-devices">
-            {devices.map((device, i) => (
-              <li key={device.id}>
-                <span>
-                  {t("Device")} {i + 1} ·{" "}
-                  {new Date(device.updatedAt).toLocaleString(
-                    user.locale === "fa" ? "fa-IR" : "en-GB",
-                  )}
-                </span>
-                <button
-                  className="button"
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError("");
-                    try {
-                      await api("notifications/push/remove", { id: device.id });
-                      setDevices((current) =>
-                        current.filter((d) => d.id !== device.id),
-                      );
-                      if (device.id === currentDevice) {
-                        setEnabled(false);
-                        setCurrentDevice(null);
-                        const registration =
-                          await navigator.serviceWorker.getRegistration("/");
-                        await (
-                          await registration?.pushManager.getSubscription()
-                        )?.unsubscribe();
-                        for (const notification of (await registration?.getNotifications()) ??
-                          [])
-                          notification.close();
-                      }
-                    } catch {
-                      setError(
-                        "Could not remove notification device. Please retry.",
-                      );
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  {t("Remove device")}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <details className="notification-help">
+        <summary>
+          {t("Devices and help")} ({device.devices.length})
+        </summary>
+        <p>
+          {t(
+            "Previously allowed devices connect automatically. New devices need one browser approval.",
+          )}
+        </p>
+        <small>
+          {t(
+            "Device delivery depends on permission, connectivity and operating system settings. Sound needs an open app and must be enabled after opening it.",
+          )}
+        </small>
+        <ul className="notification-devices">
+          {device.devices.map((d, i) => (
+            <li key={d.id}>
+              <span>
+                {t("Device")} {i + 1} ·{" "}
+                {new Date(d.updatedAt).toLocaleString(
+                  locale === "fa" ? "fa-IR" : "en-GB",
+                )}
+              </span>
+              <button
+                className="button"
+                disabled={device.busy}
+                onClick={() => void device.remove(d.id)}
+              >
+                {t("Remove device")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
@@ -552,27 +443,25 @@ export function NotificationsPage() {
   };
   return (
     <>
-      <PageTitle
-        title="Notifications"
-        subtitle="Incoming transfers remain here until acknowledged or resolved. Opening a notification does not stop reminders."
-      />
       <PushSettings />
       {user.role === "ADMIN" &&
         inbox?.coverage?.some((c) => !c.recipients || !c.devices) && (
           <section className="card notification-settings">
-            <h2>{t("Shops needing notification setup")}</h2>
-            {inbox.coverage
-              .filter((c) => !c.recipients || !c.devices)
-              .map((c) => (
-                <p key={c.destinationId} className="notification-warning">
-                  <strong>{c.name}</strong> · {c.pending} {t("pending")} ·{" "}
-                  {c.recipients} {t("active recipients")} · {c.devices}{" "}
-                  {t("registered devices")}
-                </p>
-              ))}
-            <Link className="button" href="/users">
-              {t("Manage shop access")}
-            </Link>
+            <details className="notification-help">
+              <summary>{t("Shops needing notification setup")}</summary>
+              {inbox.coverage
+                .filter((c) => !c.recipients || !c.devices)
+                .map((c) => (
+                  <p key={c.destinationId} className="notification-warning">
+                    <strong>{c.name}</strong> · {c.pending} {t("pending")} ·{" "}
+                    {c.recipients} {t("active recipients")} · {c.devices}{" "}
+                    {t("registered devices")}
+                  </p>
+                ))}
+              <Link className="button" href="/users">
+                {t("Manage shop access")}
+              </Link>
+            </details>
           </section>
         )}
       {!!inbox?.overdue && (
@@ -581,13 +470,17 @@ export function NotificationsPage() {
           {t("transfers have waited over 30 minutes for acknowledgment.")}
         </div>
       )}
+      <h2 className="notification-inbox-title">
+        {t("Incoming transfers")}{" "}
+        <small>{t("Open a transfer to read the full notification.")}</small>
+      </h2>
       <div className="notification-toolbar">
         <button
           className={`button ${!history ? "primary" : ""}`}
           onClick={() => {
             setHistory(false);
             setPage(0);
-            router.replace("/notifications");
+            router.replace(notificationUrl);
           }}
         >
           {t("Needs acknowledgment")} ({inbox?.pending ?? "…"})
@@ -597,7 +490,7 @@ export function NotificationsPage() {
           onClick={() => {
             setHistory(true);
             setPage(0);
-            router.replace("/notifications");
+            router.replace(notificationUrl);
           }}
         >
           {t("All notifications")}
@@ -625,20 +518,37 @@ export function NotificationsPage() {
       )}
       {!data && <p role="status">{t("Loading notifications…")}</p>}
       {data?.items.map((n) => (
-        <article
+        <details
+          open={selected === n.id}
           key={n.id}
           id={`notification-${n.id}`}
           className={`card notification-card ${!n.acknowledgedAt && !n.closedAt ? "unacknowledged" : ""}`}
         >
-          <div className="notification-card-heading">
+          <summary className="notification-card-heading">
             <BellRing size={21} />
-            <h2>{n.title}</h2>
+            <div className="notification-summary-text">
+              <strong>{n.transfer.number}</strong>
+              <span>
+                {n.transfer.source} → {n.transfer.destination}
+              </span>
+            </div>
+            <span
+              className={`badge ${n.acknowledgedAt || n.closedAt ? "approved" : "pending"}`}
+            >
+              {t(
+                n.acknowledgedAt
+                  ? "Acknowledged"
+                  : n.closedAt
+                    ? "Resolved"
+                    : "Needs acknowledgment",
+              )}
+            </span>
             <time dateTime={n.createdAt}>
               {new Date(n.createdAt).toLocaleString(
                 locale === "fa" ? "fa-IR" : "en-GB",
               )}
             </time>
-          </div>
+          </summary>
           <div
             className="notification-full-text"
             dir={locale === "fa" ? "rtl" : "ltr"}
@@ -674,7 +584,7 @@ export function NotificationsPage() {
               </Link>
             )}
           </div>
-        </article>
+        </details>
       ))}
       {data && !data.items.length && (
         <div className="card notification-settings">

@@ -1,5 +1,19 @@
 export type Locale = "en" | "fa";
 export const fa: Record<string, string> = {
+  "Incoming transfers": "ترانسفرهای ورودی",
+  "General settings": "تنظیمات عمومی",
+  "In-app notifications are always on.":
+    "اعلان داخل برنامه برای همه کاربران روشن است.",
+  "Enable alerts on this device so incoming transfers reach you when the app is closed.":
+    "برای اطلاع از ترانسفرها حتی وقتی برنامه بسته است، اعلان این دستگاه را فعال کنید.",
+  "Devices and help": "دستگاه‌ها و راهنما",
+  "Previously allowed devices connect automatically. New devices need one browser approval.":
+    "دستگاه‌هایی که قبلاً مجوز داده‌اند خودکار متصل می‌شوند. دستگاه جدید فقط یک بار به تأیید مجوز مرورگر نیاز دارد.",
+  "Open a transfer to read the full notification.":
+    "برای خواندن متن کامل، ردیف ترانسفر را باز کنید.",
+  Acknowledged: "مطلع شده‌اید",
+  Resolved: "تعیین تکلیف شده",
+
   "device deliveries failed and are retrying automatically. Inbox notifications remain available.":
     "ارسال اعلان دستگاه ناموفق بوده و خودکار دوباره امتحان می‌شود. اعلان‌های کامل در صندوق در دسترس‌اند.",
   Notifications: "مرکز اعلان‌ها",
