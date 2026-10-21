@@ -13,7 +13,6 @@ import {
 } from "./domain";
 import { generatePdf } from "./pdf";
 import { hash } from "./auth";
-import { notifyAdmins } from "./push";
 type User = NonNullable<
   Awaited<ReturnType<typeof import("./auth").currentUser>>
 >;
@@ -47,6 +46,7 @@ export async function insertTransfer(
       source: t.source.name,
       destination: t.destination.name,
       date: t.date,
+      confirmedAt: new Date(),
       remarks: t.remarks,
       lines: t.lines,
       total: formatTotal(totalQuantity(t.lines)),
@@ -67,22 +67,12 @@ export async function insertTransfer(
       },
     },
   });
+  await tx.transferNotification.upsert({
+    where: { transferId: transfer.id },
+    create: { transferId: transfer.id, destinationId: transfer.destinationId },
+    update: {},
+  });
   return transfer;
-}
-export async function announceTransfer(t: {
-  id: string;
-  number: string;
-  source: string;
-  destination: string;
-  creatorName: string;
-  lines: Prisma.JsonValue;
-  total: Prisma.Decimal;
-}) {
-  await notifyAdmins({
-    title: `${t.number} · ${t.source} → ${t.destination}`,
-    body: `${t.creatorName} · ${(t.lines as SnapshotLine[]).length} items · ${t.total}`,
-    url: `/transfers/${t.id}`,
-  }).catch((e) => console.error("Transfer notification failed", e));
 }
 // Two confirmations at once both take the counter; the database lets one
 // through and the other is simply run again with the next number.
@@ -119,6 +109,12 @@ async function confirmOnce(user: User, input: unknown) {
     const created = await db.$transaction(
       async (tx) => {
         const draft = await tx.draft.findUnique({ where: { id: data.key } });
+        if (!draft) {
+          const confirmed = await tx.transfer.findUnique({
+            where: { key: data.key },
+          });
+          if (confirmed?.creatorId === user.id) return confirmed;
+        }
         if (!draft || draft.userId !== user.id)
           throw new HttpError(400, "Save the draft before confirmation");
         const locations = await tx.location.findMany({
@@ -186,8 +182,6 @@ async function confirmOnce(user: User, input: unknown) {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
-    // Only a newly confirmed transfer is announced, never a retried one.
-    await announceTransfer(created);
     return created;
   } catch (e) {
     if (

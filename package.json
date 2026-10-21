@@ -18,7 +18,11 @@
     "setup": "node scripts/enable-setup.mjs",
     "catalog:initial": "tsx --env-file=.env scripts/import-sources.ts",
     "db:deploy": "prisma migrate deploy",
-    "qbm:inspect": "tsx scripts/qbm-inspect.ts"
+    "qbm:inspect": "tsx scripts/qbm-inspect.ts",
+    "test:notifications": "node scripts/test-notifications.mjs",
+    "db:migrate": "prisma migrate deploy",
+    "notifications:keys": "node scripts/notification-keys.mjs",
+    "notifications:worker": "tsx --env-file=.env scripts/notification-worker.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
