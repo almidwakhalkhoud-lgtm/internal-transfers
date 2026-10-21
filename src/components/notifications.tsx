@@ -12,7 +12,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, BellRing, CheckCheck, RefreshCw, Volume2 } from "lucide-react";
 import { api } from "@/lib/client";
-import { REMINDER_MS } from "@/lib/notification-content";
+import {
+  DEFAULT_NOTIFICATION_POLICY,
+  reminderDue,
+  reminderSummary,
+  type NotificationPolicy,
+} from "@/lib/notification-policy";
+import { NotificationPolicySettings } from "./notification-policy-settings";
 import { useBuzz } from "./shell";
 
 import { useDeviceNotifications } from "./use-device-notifications";
@@ -36,6 +42,7 @@ type Notice = {
   };
 };
 type Inbox = {
+  policy: NotificationPolicy;
   items: Notice[];
   count: number;
   pending: number;
@@ -67,6 +74,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [sound, setSound] = useState(false);
   const audio = useRef<AudioContext | null>(null);
+  const soundDeliveries = useRef(
+    new Map<string, { successes: number; lastSuccessAt: number | null }>(),
+  );
   const busy = useRef(false);
   const alive = useRef(true);
   const controller = useRef<AbortController | null>(null);
@@ -134,14 +144,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         audio.current?.state !== "running"
       )
         return;
-      const key = `buzz:reminder:${user.id}`;
-      const value = `${inbox.items[0]?.id}:${Math.floor(Date.now() / REMINDER_MS)}`;
+      const id = inbox.items[0]?.id;
+      if (!id) return;
+      const key = `buzz:sound-reminder:${user.id}:${id}`;
+      let previous = soundDeliveries.current.get(key) ?? {
+        successes: 0,
+        lastSuccessAt: null,
+      };
       try {
-        if (localStorage.getItem(key) === value) return;
-        localStorage.setItem(key, value);
+        const stored = JSON.parse(localStorage.getItem(key) || "null");
+        if (
+          stored &&
+          Number.isInteger(stored.successes) &&
+          stored.successes >= 0 &&
+          Number.isFinite(stored.lastSuccessAt)
+        )
+          previous = stored;
       } catch {
         /* Storage is optional. */
       }
+      const now = Date.now();
+      if (
+        !reminderDue(inbox.policy ?? DEFAULT_NOTIFICATION_POLICY, previous, now)
+      )
+        return;
       const context = audio.current;
       if (!context) return;
       for (const delay of [0, 0.22, 0.44]) {
@@ -156,6 +182,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.17);
         oscillator.start(start);
         oscillator.stop(start + 0.18);
+      }
+      const updated = { successes: previous.successes + 1, lastSuccessAt: now };
+      soundDeliveries.current.set(key, updated);
+      try {
+        localStorage.setItem(key, JSON.stringify(updated));
+      } catch {
+        /* Keep session memory as fallback. */
       }
     };
     ring();
@@ -212,7 +245,7 @@ export function NotificationBell() {
 }
 
 export function NotificationBanner() {
-  const { t, user } = useBuzz();
+  const { t, user, locale } = useBuzz();
   const { inbox, error, refresh, device } = useContext(NotificationContext);
   const path = usePathname();
   const query = useSearchParams();
@@ -261,8 +294,9 @@ export function NotificationBanner() {
             </strong>
             <p>{inbox.items[0]?.title}</p>
             <small>
-              {t(
-                "Reminders repeat every 5 minutes until your shop explicitly acknowledges.",
+              {reminderSummary(
+                inbox.policy ?? DEFAULT_NOTIFICATION_POLICY,
+                locale,
               )}
             </small>
           </div>
@@ -340,6 +374,9 @@ function PushSettings() {
           )}
         </p>
       )}
+      <p className="notification-policy-summary">
+        {reminderSummary(inbox?.policy ?? DEFAULT_NOTIFICATION_POLICY, locale)}
+      </p>
       <details className="notification-help">
         <summary>
           {t("Devices and help")} ({device.devices.length})
@@ -444,6 +481,9 @@ export function NotificationsPage() {
   return (
     <>
       <PushSettings />
+      {user.role === "ADMIN" && (
+        <NotificationPolicySettings onSaved={refresh} />
+      )}
       {user.role === "ADMIN" &&
         inbox?.coverage?.some((c) => !c.recipients || !c.devices) && (
           <section className="card notification-settings">

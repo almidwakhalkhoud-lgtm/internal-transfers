@@ -1,6 +1,10 @@
 import type { SnapshotLine } from "./domain";
 
-export const REMINDER_MS = 5 * 60_000;
+import {
+  DEFAULT_NOTIFICATION_POLICY,
+  reminderSummary,
+  type NotificationPolicy,
+} from "./notification-policy";
 export const ESCALATION_MS = 30 * 60_000;
 export type NotificationTransfer = {
   number: string;
@@ -15,7 +19,11 @@ export type NotificationTransfer = {
   lines: unknown;
 };
 
-export function notificationContent(t: NotificationTransfer, locale: string) {
+export function notificationContent(
+  t: NotificationTransfer,
+  locale: string,
+  policy: NotificationPolicy = DEFAULT_NOTIFICATION_POLICY,
+) {
   const fa = locale === "fa";
   const lines = t.lines as SnapshotLine[];
   const title = fa
@@ -55,8 +63,8 @@ export function notificationContent(t: NotificationTransfer, locale: string) {
     ),
     fa ? `توضیحات: ${t.remarks || "ندارد"}` : `Remarks: ${t.remarks || "None"}`,
     fa
-      ? "لطفاً اقلام و مسیر را بررسی و «از ترانسفر مطلع شدم» را ثبت کنید. یادآوری هر ۵ دقیقه تا ثبت اطلاع ادامه دارد. ثبت اطلاع به معنی دریافت فیزیکی کالا یا تأیید مدیر نیست."
-      : "Review the items and route, then select ‘Acknowledge transfer’. Reminders repeat every 5 minutes until acknowledged. Acknowledgment does not confirm physical receipt or administrator approval.",
+      ? `لطفاً اقلام و مسیر را بررسی و «از ترانسفر مطلع شدم» را ثبت کنید. ${reminderSummary(policy, locale)} ثبت اطلاع به معنی دریافت فیزیکی کالا یا تأیید مدیر نیست.`
+      : `Review the items and route, then select ‘Acknowledge transfer’. ${reminderSummary(policy, locale)} Acknowledgment does not confirm physical receipt or administrator approval.`,
   ].join("\n\n");
   return { title, body, status, route };
 }
@@ -65,8 +73,9 @@ export function pushPayload(
   id: string,
   t: NotificationTransfer,
   locale: string,
+  policy: NotificationPolicy = DEFAULT_NOTIFICATION_POLICY,
 ) {
-  const full = notificationContent(t, locale);
+  const full = notificationContent(t, locale, policy);
   const url = `/notifications?notification=${encodeURIComponent(id)}`;
   const data = {
     id,
@@ -89,8 +98,8 @@ export function pushPayload(
       `${locale === "fa" ? "وضعیت" : "Status"}: ${full.status}`,
       `${locale === "fa" ? "ردیف‌ها / مجموع مقدار" : "Line items / total quantity"}: ${(t.lines as SnapshotLine[]).length} / ${t.total}`,
       locale === "fa"
-        ? "متن کامل، تمام اقلام و توضیحات در مرکز اعلان‌هاست. برای بررسی و ثبت اطلاع باز کنید. یادآوری هر ۵ دقیقه ادامه دارد."
-        : "Full text, all items and remarks are in your notification inbox. Open to review and acknowledge. Reminders repeat every 5 minutes.",
+        ? `متن کامل، تمام اقلام و توضیحات در مرکز اعلان‌هاست. برای بررسی و ثبت اطلاع باز کنید. ${reminderSummary(policy, locale)}`
+        : `Full text, all items and remarks are in your notification inbox. Open to review and acknowledge. ${reminderSummary(policy, locale)}`,
     ].join("\n"),
   });
 }

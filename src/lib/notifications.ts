@@ -3,6 +3,8 @@ import { db } from "./db";
 import { HttpError } from "./auth";
 import { ESCALATION_MS, notificationContent } from "./notification-content";
 
+import { getNotificationPolicy } from "./notification-settings";
+
 type Recipient = {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ export async function notificationInbox(
   id?: string,
   compact = false,
 ) {
+  const policy = await getNotificationPolicy();
   const scope = notificationAccess(user);
   const active = { AND: [scope, outstanding] };
   const where = {
@@ -78,6 +81,9 @@ export async function notificationInbox(
       db.pushDelivery.count({
         where: {
           failures: { gt: 0 },
+          ...(policy.maxReminders === null
+            ? {}
+            : { successes: { lt: policy.maxReminders + 1 } }),
           notification: active,
           ...(user.role === "ADMIN"
             ? {}
@@ -97,8 +103,9 @@ export async function notificationInbox(
                 : `Incoming transfer ${n.transfer.number} for ${n.transfer.destination}`,
             body: "",
           }
-        : notificationContent(n.transfer, user.locale)),
+        : notificationContent(n.transfer, user.locale, policy)),
     })),
+    policy,
     count,
     pending,
     overdue,

@@ -67,6 +67,7 @@ test.beforeEach(async ({ context }) => {
     where: { closedAt: null },
     data: { closedAt: new Date() },
   });
+  await db.notificationSettings.deleteMany();
   await auth(context);
 });
 test.afterAll(() => db.$disconnect());
@@ -596,4 +597,172 @@ test("administrator general settings remain separate from notification settings"
   await expect(
     page.getByRole("heading", { name: "Numbering sequence", exact: true }),
   ).toHaveCount(0);
+});
+
+test("only administrators can change reminder policy, with validation and same-origin protection", async ({
+  page,
+  browser,
+  context,
+}) => {
+  await page.goto("/settings?tab=notifications");
+  await expect(page.locator(".notification-policy-settings")).toHaveCount(0);
+  expect((await page.request.get("/api/notifications/settings")).status()).toBe(
+    403,
+  );
+  expect(
+    (
+      await page.request.patch("/api/notifications/settings", {
+        headers: { Origin: origin },
+        data: { intervalMinutes: 1, maxReminders: 1 },
+      })
+    ).status(),
+  ).toBe(403);
+  const anonymous = await browser.newContext();
+  expect(
+    (
+      await anonymous.request.get(`${origin}/api/notifications/settings`)
+    ).status(),
+  ).toBe(401);
+  await anonymous.close();
+  await auth(context, "ADMIN");
+  for (const invalid of [
+    { intervalMinutes: 0, maxReminders: 1 },
+    { intervalMinutes: 2.5, maxReminders: 1 },
+    { intervalMinutes: 5, maxReminders: -1 },
+    { intervalMinutes: 5, maxReminders: 101 },
+  ]) {
+    expect(
+      (
+        await page.request.patch("/api/notifications/settings", {
+          headers: { Origin: origin },
+          data: invalid,
+        })
+      ).status(),
+    ).toBe(400);
+  }
+  expect(
+    (
+      await page.request.patch("/api/notifications/settings", {
+        headers: { Origin: "https://untrusted.example" },
+        data: { intervalMinutes: 1, maxReminders: 1 },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(await db.notificationSettings.count()).toBe(0);
+});
+
+test("administrator saves reminder frequency and limits; users see the current policy without editing it", async ({
+  page,
+  context,
+}) => {
+  await auth(context, "ADMIN");
+  await page.goto("/settings?tab=notifications");
+  const panel = page.locator(".notification-policy-settings:visible");
+  await expect(panel).not.toHaveAttribute("open");
+  await panel.locator("summary").click();
+  const interval = panel.getByLabel("Reminder interval (minutes)", {
+    exact: true,
+  });
+  await expect(interval).toHaveValue("5");
+  await interval.fill("15");
+  await panel
+    .getByLabel("Repeat reminders", { exact: true })
+    .selectOption("limited");
+  await panel
+    .getByLabel("Reminders after the initial alert", { exact: true })
+    .fill("2");
+  await panel
+    .getByRole("button", { name: "Save reminder settings", exact: true })
+    .click();
+  await expect(
+    panel.getByText("Reminder settings saved", { exact: true }),
+  ).toBeVisible();
+  expect(
+    (
+      await db.notificationSettings.findUniqueOrThrow({
+        where: { id: "global" },
+      })
+    ).maxReminders,
+  ).toBe(2);
+  await page.reload();
+  await panel.locator("summary").click();
+  await expect(interval).toHaveValue("15");
+  await expect(
+    panel.getByLabel("Reminders after the initial alert", { exact: true }),
+  ).toHaveValue("2");
+  await expect(
+    page.locator(".notification-policy-summary:visible"),
+  ).toContainText("2 reminders every 15 minutes");
+  // Verify both zero reminders and restoring the unlimited default.
+  await panel
+    .getByLabel("Reminders after the initial alert", { exact: true })
+    .fill("0");
+  await panel
+    .getByRole("button", { name: "Save reminder settings", exact: true })
+    .click();
+  await expect(page.locator(".notification-policy-summary:visible")).toHaveText(
+    "Initial alert only; no repeated reminders.",
+  );
+  await panel
+    .getByLabel("Repeat reminders", { exact: true })
+    .selectOption("unlimited");
+  await interval.fill("5");
+  await panel
+    .getByRole("button", { name: "Save reminder settings", exact: true })
+    .click();
+  await expect(
+    page.locator(".notification-policy-summary:visible"),
+  ).toContainText("every 5 minutes");
+  await auth(context);
+  await page.goto("/settings");
+  await expect(page.locator(".notification-policy-settings")).toHaveCount(0);
+  await expect(
+    page.locator(".notification-policy-summary:visible"),
+  ).toContainText("هر 5 دقیقه");
+});
+
+test("Persian reminder controls remain readable on mobile", async ({
+  page,
+  context,
+}) => {
+  await db.user.update({
+    where: { id: "notify-admin" },
+    data: { locale: "fa" },
+  });
+  try {
+    await auth(context, "ADMIN");
+    await page.goto("/settings?tab=notifications");
+    const panel = page.locator(".notification-policy-settings:visible");
+    await panel.locator("summary").click();
+    await panel
+      .getByLabel("تکرار یادآوری", { exact: true })
+      .selectOption("limited");
+    await expect(
+      panel.getByLabel("تعداد یادآوری بعد از اعلان اول", { exact: true }),
+    ).toHaveValue("3");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("aside")).toBeHidden();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - innerWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+    await page.screenshot({
+      path: "output/qa/reminder-settings-mobile-fa.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(page.locator("aside")).toBeVisible();
+    await page.screenshot({
+      path: "output/qa/reminder-settings-desktop-fa.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+  } finally {
+    await db.user.update({
+      where: { id: "notify-admin" },
+      data: { locale: "en" },
+    });
+  }
 });

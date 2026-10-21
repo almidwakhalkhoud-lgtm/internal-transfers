@@ -3115,3 +3115,7 @@ textarea::placeholder {
   .notification-card-heading time { grid-column: 2 / 4; grid-row: 3; margin: 0; }
   .notification-card-heading::after { grid-column: 3; grid-row: 1; }
 }
+
+.notification-policy-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin: 18px 0; }
+.notification-policy-fields label { display: flex; flex-direction: column; gap: 8px; }
+.notification-policy-summary { font-size: 13px; color: var(--muted); margin: 12px 0 0; }

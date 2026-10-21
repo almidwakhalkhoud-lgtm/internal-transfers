@@ -18,6 +18,10 @@ import {
 } from "../../src/lib/notifications";
 import { runNotificationTick } from "../../src/lib/push-worker";
 import type webpush from "web-push";
+import {
+  getNotificationPolicy,
+  saveNotificationPolicy,
+} from "../../src/lib/notification-settings";
 const sender = vi.fn<typeof webpush.sendNotification>();
 let creator: Awaited<ReturnType<typeof db.user.findUniqueOrThrow>> & {
   locations: { id: string; name: string; active: boolean }[];
@@ -83,6 +87,7 @@ beforeEach(async () => {
     where: { closedAt: null },
     data: { closedAt: new Date() },
   });
+  await db.notificationSettings.deleteMany();
   sender.mockReset();
   sender.mockResolvedValue({ statusCode: 201, body: "", headers: {} });
 });
@@ -202,7 +207,7 @@ describe.sequential("durable destination notifications", () => {
     expect(sender.mock.calls.length).toBe(before);
     await db.pushDelivery.updateMany({
       where: { notificationId: n.id },
-      data: { nextAttemptAt: new Date(0) },
+      data: { nextAttemptAt: new Date(0), lastSuccessAt: new Date(0) },
     });
     await runNotificationTick(sender);
     expect(sender.mock.calls.length).toBe(before + 2);
@@ -259,6 +264,7 @@ describe.sequential("durable destination notifications", () => {
     await db.pushDelivery.update({
       where: { id: job.id },
       data: {
+        lastSuccessAt: new Date(0),
         lockToken: "dead-worker",
         lockedUntil: new Date(Date.now() + 60_000),
         nextAttemptAt: new Date(0),
@@ -285,7 +291,7 @@ describe.sequential("durable destination notifications", () => {
     await acknowledgeNotification(recipient, n.id);
     await db.pushDelivery.updateMany({
       where: { notificationId: n.id },
-      data: { nextAttemptAt: new Date(0) },
+      data: { nextAttemptAt: new Date(0), lastSuccessAt: new Date(0) },
     });
     sender.mockClear();
     await runNotificationTick(sender);
@@ -304,7 +310,7 @@ describe.sequential("durable destination notifications", () => {
     });
     await db.pushDelivery.updateMany({
       where: { notificationId: n.id },
-      data: { nextAttemptAt: new Date(0) },
+      data: { nextAttemptAt: new Date(0), lastSuccessAt: new Date(0) },
     });
     sender.mockClear();
     await runNotificationTick(sender);
@@ -452,5 +458,185 @@ describe.sequential("durable destination notifications", () => {
       (await notificationInbox(recipient, 0, false, notification.id)).items[0]
         .body,
     ).toContain("Full request line note");
+  });
+  it("persists administrator policy atomically, validates limits and denies staff changes", async () => {
+    expect(await getNotificationPolicy()).toEqual({
+      intervalMinutes: 5,
+      maxReminders: null,
+    });
+    await expect(
+      saveNotificationPolicy(recipient, {
+        intervalMinutes: 2,
+        maxReminders: 3,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    for (const policy of [
+      { intervalMinutes: 0, maxReminders: null },
+      { intervalMinutes: 1441, maxReminders: null },
+      { intervalMinutes: 2.5, maxReminders: 3 },
+      { intervalMinutes: 2, maxReminders: -1 },
+      { intervalMinutes: 2, maxReminders: 101 },
+      { intervalMinutes: 2, maxReminders: "3" },
+    ])
+      await expect(saveNotificationPolicy(admin, policy)).rejects.toThrow();
+    expect(await getNotificationPolicy()).toEqual({
+      intervalMinutes: 5,
+      maxReminders: null,
+    });
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 12,
+      maxReminders: 3,
+    });
+    expect(await getNotificationPolicy()).toEqual({
+      intervalMinutes: 12,
+      maxReminders: 3,
+    });
+    const audit = await db.audit.findFirstOrThrow({
+      where: { action: "NOTIFICATION_SETTINGS_UPDATED", actor: admin.id },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit.detail).toEqual({ intervalMinutes: 12, maxReminders: 3 });
+  });
+  it("uses the configured interval and applies increases and decreases to existing deliveries", async () => {
+    const n = await makeTransfer();
+    const data = subscription("custom-interval");
+    await savePushSubscription(recipient, data);
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 12,
+      maxReminders: null,
+    });
+    await runNotificationTick(sender);
+    const job = await db.pushDelivery.findFirstOrThrow({
+      where: {
+        notificationId: n.id,
+        subscription: { endpoint: data.endpoint },
+      },
+    });
+    expect(
+      job.nextAttemptAt.getTime() - job.lastSuccessAt!.getTime(),
+    ).toBeGreaterThanOrEqual(12 * 60_000 - 1000);
+    await db.pushDelivery.update({
+      where: { id: job.id },
+      data: {
+        lastSuccessAt: new Date(Date.now() - 6 * 60_000),
+        nextAttemptAt: new Date(Date.now() + 60 * 60_000),
+      },
+    });
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 20,
+      maxReminders: null,
+    });
+    sender.mockClear();
+    await runNotificationTick(sender);
+    expect(
+      sender.mock.calls.filter(([sub]) => sub.endpoint === data.endpoint),
+    ).toHaveLength(0);
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 2,
+      maxReminders: null,
+    });
+    await runNotificationTick(sender);
+    const calls = sender.mock.calls.filter(
+      ([sub]) => sub.endpoint === data.endpoint,
+    );
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(String(calls[0][1])).body).toContain("هر 2 دقیقه");
+  });
+  it("caps successful reminders per device, preserves the inbox and resumes when the cap is raised", async () => {
+    const n = await makeTransfer();
+    const data = subscription("bounded-reminders");
+    await savePushSubscription(recipient, data);
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 1,
+      maxReminders: 1,
+    });
+    await runNotificationTick(sender);
+    const job = await db.pushDelivery.findFirstOrThrow({
+      where: {
+        notificationId: n.id,
+        subscription: { endpoint: data.endpoint },
+      },
+    });
+    for (let i = 0; i < 3; i++) {
+      await db.pushDelivery.update({
+        where: { id: job.id },
+        data: { lastSuccessAt: new Date(0), nextAttemptAt: new Date(0) },
+      });
+      await runNotificationTick(sender);
+    }
+    expect(
+      (await db.pushDelivery.findUniqueOrThrow({ where: { id: job.id } }))
+        .successes,
+    ).toBe(2);
+    expect(
+      sender.mock.calls.filter(([sub]) => sub.endpoint === data.endpoint),
+    ).toHaveLength(2);
+    expect(
+      (await notificationInbox(recipient, 0, false, n.id)).items,
+    ).toHaveLength(1);
+    expect(
+      (await db.transferNotification.findUniqueOrThrow({ where: { id: n.id } }))
+        .acknowledgedAt,
+    ).toBeNull();
+    const newDevice = subscription("bounded-new-device");
+    await savePushSubscription(recipient, newDevice);
+    await runNotificationTick(sender);
+    expect(
+      sender.mock.calls.filter(([sub]) => sub.endpoint === newDevice.endpoint),
+    ).toHaveLength(1);
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 1,
+      maxReminders: 3,
+    });
+    await runNotificationTick(sender);
+    expect(
+      (await db.pushDelivery.findUniqueOrThrow({ where: { id: job.id } }))
+        .successes,
+    ).toBe(3);
+  });
+  it("initial-only mode still retries failed sends without consuming the successful delivery limit", async () => {
+    const n = await makeTransfer();
+    const data = subscription("initial-only-retry");
+    await savePushSubscription(recipient, data);
+    await saveNotificationPolicy(admin, {
+      intervalMinutes: 5,
+      maxReminders: 0,
+    });
+    sender.mockImplementation(async (sub) => {
+      if (sub.endpoint === data.endpoint) throw { statusCode: 503 };
+      return { statusCode: 201, body: "", headers: {} };
+    });
+    await runNotificationTick(sender);
+    const job = await db.pushDelivery.findFirstOrThrow({
+      where: {
+        notificationId: n.id,
+        subscription: { endpoint: data.endpoint },
+      },
+    });
+    expect(job.successes).toBe(0);
+    expect(job.attempts).toBe(1);
+    await db.pushDelivery.update({
+      where: { id: job.id },
+      data: { nextAttemptAt: new Date(0) },
+    });
+    sender.mockResolvedValue({ statusCode: 201, body: "", headers: {} });
+    await runNotificationTick(sender);
+    const saved = await db.pushDelivery.findUniqueOrThrow({
+      where: { id: job.id },
+    });
+    expect(saved.successes).toBe(1);
+    expect(saved.attempts).toBe(2);
+    await db.pushDelivery.update({
+      where: { id: job.id },
+      data: { nextAttemptAt: new Date(0), lastSuccessAt: new Date(0) },
+    });
+    sender.mockClear();
+    await runNotificationTick(sender);
+    expect(
+      sender.mock.calls.filter(([sub]) => sub.endpoint === data.endpoint),
+    ).toHaveLength(0);
+    expect(
+      (await notificationInbox(recipient, 0, false, n.id)).items[0].body,
+    ).toContain("فقط اعلان اول");
   });
 });
