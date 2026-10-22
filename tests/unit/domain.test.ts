@@ -199,6 +199,30 @@ describe("transfer signatures", () => {
       signableSides(staff("a", "main"), { ...t, approval: "REJECTED" }),
     ).toEqual([]);
   });
+  it("lets an administrator-made exception sign both sides", () => {
+    const signed = { ...t, signatures: [{ side: "SOURCE", userId: "a" }] };
+    expect(
+      signableSides(
+        { ...staff("a", "main", "sur"), signBothSides: true },
+        signed,
+      ),
+    ).toEqual(["DESTINATION"]);
+    // The exception never adds a location the user does not work at.
+    expect(
+      signableSides({ ...staff("a", "main"), signBothSides: true }, signed),
+    ).toEqual([]);
+  });
+  it("shows view-only locations without letting them sign", () => {
+    const viewer = { ...staff("v", "other"), viewLocations: [{ id: "sur" }] };
+    expect(
+      canAccess(viewer, {
+        creatorId: "x",
+        sourceId: "main",
+        destinationId: "sur",
+      }),
+    ).toBe(true);
+    expect(signableSides(viewer, t)).toEqual([]);
+  });
   it("accepts only PNG signature images", () => {
     const png = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1,

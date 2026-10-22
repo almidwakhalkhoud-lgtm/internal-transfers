@@ -80,6 +80,8 @@ const userSelect = {
   locale: true,
   menus: true,
   locations: true,
+  viewLocations: true,
+  signBothSides: true,
 };
 const summary = {
   id: true,
@@ -99,6 +101,7 @@ function waitingForSignature(user: {
   id: string;
   role: string;
   locations: { id: string }[];
+  signBothSides: boolean;
 }): Prisma.TransferWhereInput {
   const mine = user.locations.map((l) => l.id);
   const unsigned = (side: "SOURCE" | "DESTINATION") => ({
@@ -111,7 +114,9 @@ function waitingForSignature(user: {
   });
   return {
     approval: { not: "REJECTED" },
-    signatures: { none: { userId: user.id } },
+    ...(user.signBothSides
+      ? {}
+      : { signatures: { none: { userId: user.id } } }),
     OR: [unsigned("SOURCE"), unsigned("DESTINATION")],
   };
 }
@@ -537,14 +542,16 @@ async function handle(
         count: await db.product.count({ where }),
       });
     }
+    // Work locations and view-only locations both show their transfers.
+    const seen = [...user.locations, ...user.viewLocations].map((l) => l.id);
     const access: Prisma.TransferWhereInput =
       user.role === "ADMIN"
         ? {}
         : {
             OR: [
               { creatorId: user.id },
-              { sourceId: { in: user.locations.map((l) => l.id) } },
-              { destinationId: { in: user.locations.map((l) => l.id) } },
+              { sourceId: { in: seen } },
+              { destinationId: { in: seen } },
             ],
           };
     if (path === "dashboard" && method === "GET") {
@@ -1270,6 +1277,8 @@ async function handle(
               .default([...menus]),
             role: z.enum(["ADMIN", "STAFF"]),
             locationIds: z.array(z.string()),
+            viewLocationIds: z.array(z.string()).default([]),
+            signBothSides: z.boolean().default(false),
           })
           .parse(await req.json());
         const credentials = await prepareCode(v.accessCode);
@@ -1288,6 +1297,10 @@ async function handle(
             menus: v.menus,
             role: v.role,
             locations: { connect: v.locationIds.map((id) => ({ id })) },
+            viewLocations: {
+              connect: v.viewLocationIds.map((id) => ({ id })),
+            },
+            signBothSides: v.signBothSides,
           },
           select: userSelect,
         });
@@ -1308,6 +1321,8 @@ async function handle(
           active: z.boolean().optional(),
           password: z.string().min(12).max(128).optional(),
           locationIds: z.array(z.string()).optional(),
+          viewLocationIds: z.array(z.string()).optional(),
+          signBothSides: z.boolean().optional(),
         })
         .parse(await req.json());
       if (id === user.id && v.active === false)
@@ -1342,6 +1357,14 @@ async function handle(
             ...(v.locationIds
               ? { locations: { set: v.locationIds.map((id) => ({ id })) } }
               : {}),
+            ...(v.viewLocationIds
+              ? {
+                  viewLocations: {
+                    set: v.viewLocationIds.map((id) => ({ id })),
+                  },
+                }
+              : {}),
+            signBothSides: v.signBothSides,
           },
         });
         if (
@@ -1350,7 +1373,9 @@ async function handle(
           v.accessCode ||
           v.revokeCode ||
           v.menus ||
-          v.locationIds
+          v.locationIds ||
+          v.viewLocationIds ||
+          v.signBothSides !== undefined
         )
           await tx.session.deleteMany({ where: { userId: id } });
         await tx.audit.create({
@@ -1363,6 +1388,9 @@ async function handle(
               codeRotated: !!v.accessCode,
               codeRevoked: !!v.revokeCode,
               menus: v.menus,
+              ...(v.signBothSides !== undefined
+                ? { signBothSides: v.signBothSides }
+                : {}),
             },
           },
         });

@@ -25,6 +25,7 @@ import {
 const sender = vi.fn<typeof webpush.sendNotification>();
 let creator: Awaited<ReturnType<typeof db.user.findUniqueOrThrow>> & {
   locations: { id: string; name: string; active: boolean }[];
+  viewLocations: { id: string; name: string; active: boolean }[];
 };
 let recipient: typeof creator;
 let outsider: typeof creator;
@@ -74,7 +75,7 @@ beforeAll(async () => {
     ].map((id) =>
       db.user.findUniqueOrThrow({
         where: { id },
-        include: { locations: true },
+        include: { locations: true, viewLocations: true },
       }),
     ),
   );

@@ -133,23 +133,39 @@ export function canSupply(
     user.role === "ADMIN" || user.locations.some((l) => l.id === r.supplierId)
   );
 }
+// A user sees transfers they made, those of the locations they work at, and
+// those of locations an administrator let them view.
 export function canAccess(
-  user: { id: string; role: string; locations: { id: string }[] },
+  user: {
+    id: string;
+    role: string;
+    locations: { id: string }[];
+    viewLocations?: { id: string }[];
+  },
   t: { creatorId: string; sourceId: string; destinationId: string },
 ) {
   return (
     user.role === "ADMIN" ||
     t.creatorId === user.id ||
-    user.locations.some((l) => l.id === t.sourceId || l.id === t.destinationId)
+    [...user.locations, ...(user.viewLocations ?? [])].some(
+      (l) => l.id === t.sourceId || l.id === t.destinationId,
+    )
   );
 }
 // The sender signs for the source location and the receiver for the
 // destination; administrators may sign for either. Rejected transfers are
-// not signed, and one person never signs both sides of a transfer.
+// not signed, and one person signs only one side of a transfer unless an
+// administrator made an exception for them. Viewing a location never lets
+// anyone sign for it.
 export const signatureSides = ["SOURCE", "DESTINATION"] as const;
 export type SignatureSide = (typeof signatureSides)[number];
 export function signableSides(
-  user: { id: string; role: string; locations: { id: string }[] },
+  user: {
+    id: string;
+    role: string;
+    locations: { id: string }[];
+    signBothSides?: boolean;
+  },
   t: {
     sourceId: string;
     destinationId: string;
@@ -158,7 +174,8 @@ export function signableSides(
   },
 ): SignatureSide[] {
   if (t.approval === "REJECTED") return [];
-  if (t.signatures.some((s) => s.userId === user.id)) return [];
+  if (!user.signBothSides && t.signatures.some((s) => s.userId === user.id))
+    return [];
   const mine = (id: string) =>
     user.role === "ADMIN" || user.locations.some((l) => l.id === id);
   return signatureSides.filter(

@@ -614,6 +614,14 @@ export const fa: Record<string, string> = {
   "Use this when the number is out of step with QBM. The PDF is made again with the new number, and the next transfer number in Settings follows the highest number.":
     "وقتی شماره با QBM نمی‌خواند از این استفاده کنید. PDF با شمارهٔ جدید دوباره ساخته می‌شود و شمارهٔ انتقال بعدی در تنظیمات خودش با بالاترین شماره هماهنگ می‌شود.",
   TRANSFER_RENUMBERED: "تغییر شمارهٔ انتقال",
+  "Works here": "محل کار",
+  "View only": "فقط مشاهده",
+  "Can sign both sides": "اجازهٔ امضای هر دو طرف",
+  "Exception: may sign as both sender and receiver of the same transfer.":
+    "استثنا: می‌تواند در یک انتقال هم به‌عنوان تحویل‌دهنده و هم تحویل‌گیرنده امضا کند.",
+  "View only shows that location's transfers. It does not let the user send from it or sign for it.":
+    "«فقط مشاهده» انتقال‌های آن مکان را نشان می‌دهد، ولی اجازهٔ ارسال از آن مکان یا امضا برای آن را نمی‌دهد.",
+  Location: "مکان",
   "Delete transfer": "حذف انتقال",
   "The confirmed transfer and its saved PDF will be permanently deleted. A full copy is kept in the audit log.":
     "انتقال تأییدشده و PDF ذخیره‌شدهٔ آن برای همیشه حذف می‌شود. یک نسخهٔ کامل در گزارش رویدادها نگهداری می‌شود.",

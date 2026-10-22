@@ -177,9 +177,11 @@ test("real product code → TAB → quantity → conditional unit → confirm �
   const popup = await whatsappPopup;
   await expect(popup).toHaveURL(/^https:\/\/wa.me\/\?text=/);
   await popup.close();
-  await expect(page.getByRole("status")).toContainText(
-    "Attach it manually in WhatsApp",
-  );
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Attach it manually in WhatsApp" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open WhatsApp" }),
   ).toHaveAttribute("href", /^https:\/\/wa.me\/\?text=/);
@@ -429,7 +431,10 @@ test("native file sharing branch hands the actual PDF File to the Web Share API"
   expect(files[0].name).toBe(`${t.number}.pdf`);
   expect(files[0].type).toBe("application/pdf");
   expect(files[0].size).toBeGreaterThan(1000);
-  await expect(page.getByRole("status")).toContainText("File shared");
+  // The incoming-transfers banner is a status too; pick this message.
+  await expect(
+    page.getByRole("status").filter({ hasText: "File shared" }),
+  ).toBeVisible();
 });
 test("approval is distinct, audited, and does not mutate the confirmed PDF", async ({
   page,
@@ -758,7 +763,10 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
   await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
   await page.getByLabel("Quantity 1", { exact: true }).fill("7.25");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Draft saved");
+  // The incoming-transfers banner is a status too; pick this message.
+  await expect(
+    page.getByRole("status").filter({ hasText: "Draft saved" }),
+  ).toBeVisible();
   // A draft holds no number; one is taken only on confirmation.
   await expect(page.getByLabel("Transfer number", { exact: true })).toHaveValue(
     "Assigned on confirmation",
@@ -1277,7 +1285,10 @@ test("saved drafts can be deleted by their owner only", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Delete draft", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Draft deleted");
+  // The incoming-transfers banner is a status too; pick this message.
+  await expect(
+    page.getByRole("status").filter({ hasText: "Draft deleted" }),
+  ).toBeVisible();
   await expect(page.locator(`[data-draft="${input.key}"]`)).toHaveCount(0);
   expect(await db.draft.findUnique({ where: { id: input.key } })).toBeNull();
   expect(
@@ -1641,5 +1652,115 @@ test("drafts take no number, the latest deleted number comes back and admins can
       data: { number: "MA-9001" },
     }),
   ).rejects.toThrow();
+  await adminContext.close();
+});
+test("view-only locations show transfers without signing, and a per-user exception signs both sides", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const saved = await (
+    await post(
+      page.request,
+      "transfers",
+      await draft(page.request, [
+        {
+          productId: p.id,
+          version: p.updatedAt.toISOString(),
+          quantity: "1",
+          unit: "",
+        },
+      ]),
+    )
+  ).json();
+  // An administrator gives a user Al Azaiba as a view-only location.
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  await admin.goto("/users");
+  await admin.getByRole("button", { name: "Create user", exact: true }).click();
+  const modal = admin.getByRole("dialog");
+  await modal.getByLabel("Name", { exact: true }).fill("QA Viewer");
+  await modal.getByLabel("Email", { exact: true }).fill("viewer@buzz.test");
+  await modal.getByLabel("Access code", { exact: true }).fill("QA-VIEWER-01");
+  await modal.getByLabel("TEST RESTRICTED LOCATION", { exact: true }).check();
+  await modal.getByLabel("View only · Al Azaiba", { exact: true }).check();
+  await modal.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(admin.getByRole("dialog")).toHaveCount(0);
+  const stored = await db.user.findUniqueOrThrow({
+    where: { email: "viewer@buzz.test" },
+    include: { locations: true, viewLocations: true },
+  });
+  expect(stored.locations.map((l) => l.id)).toEqual(["restricted"]);
+  expect(stored.viewLocations.map((l) => l.id)).toEqual(["branch"]);
+  const viewerContext = await browser.newContext();
+  const viewer = await viewerContext.newPage();
+  await viewer.goto("/login");
+  await viewer.getByLabel("Access code", { exact: true }).fill("QA-VIEWER-01");
+  await viewer.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(viewer).not.toHaveURL(/login/);
+  const seen = await viewer.request.get(`/api/transfers/${saved.id}`);
+  expect(seen.ok()).toBe(true);
+  expect((await seen.json()).canSign).toEqual([]);
+  const listed = await (
+    await viewer.request.get(`/api/transfers?q=${saved.number}`)
+  ).json();
+  expect(listed.items.map((t: { id: string }) => t.id)).toContain(saved.id);
+  const image = `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]).toString("base64")}`;
+  expect(
+    (
+      await post(viewer.request, `sign/${saved.id}`, {
+        side: "DESTINATION",
+        image,
+      })
+    ).status(),
+  ).toBe(403);
+  // QA Staff works at both ends. By default one person signs one side...
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, { side: "SOURCE", image })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, {
+        side: "DESTINATION",
+        image,
+      })
+    ).status(),
+  ).toBe(403);
+  // ...until an administrator makes an exception for them.
+  await admin.goto("/users");
+  await admin
+    .getByRole("row")
+    .filter({ hasText: "staff@buzz.test" })
+    .getByRole("button", { name: "Edit" })
+    .click();
+  await admin.getByLabel("Can sign both sides").check();
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+  await expect(admin.getByRole("dialog")).toHaveCount(0);
+  try {
+    await login(page);
+    expect(
+      (
+        await post(page.request, `sign/${saved.id}`, {
+          side: "DESTINATION",
+          image,
+        })
+      ).ok(),
+    ).toBe(true);
+  } finally {
+    await db.user.update({
+      where: { id: "test-staff" },
+      data: { signBothSides: false },
+    });
+  }
+  await viewerContext.close();
   await adminContext.close();
 });

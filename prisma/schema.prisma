@@ -49,7 +49,12 @@ model User {
   accessHash        String?            @unique
   accessVerifier    String?
   menus             String[]           @default(["dashboard", "new-transfer", "requests", "transfers", "products", "locations"])
-  locations         Location[]
+  // Where the user works: sends from, signs for, and sees transfers of.
+  locations         Location[]         @relation("LocationToUser")
+  // Locations whose transfers the user may only see.
+  viewLocations     Location[]         @relation("ViewLocations")
+  // An exception to the rule that one person signs only one side.
+  signBothSides     Boolean            @default(false)
   sessions          Session[]
   transfers         Transfer[]
   pushSubscriptions PushSubscription[]
@@ -84,8 +89,9 @@ model LoginAttempt {
 model Location {
   id     String  @id @default(cuid())
   name   String  @unique
-  active Boolean @default(true)
-  users  User[]
+  active  Boolean @default(true)
+  users   User[]  @relation("LocationToUser")
+  viewers User[]  @relation("ViewLocations")
 }
 
 model Product {

@@ -4,7 +4,7 @@ import { Form } from "@/components/form";
 import Link from "next/link";
 import { menus } from "@/lib/permissions";
 import { Skeleton } from "./skeleton";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { MapPin, Plus, Users as UsersIcon } from "lucide-react";
 import { api } from "@/lib/client";
 import { PageTitle, useBuzz } from "./shell";
@@ -24,6 +24,8 @@ import {
 } from "./ui";
 const fieldset = "m-0 flex flex-col gap-1 rounded-xl border border-line p-3";
 const legend = "px-1 text-sm font-medium text-muted";
+const locationBox =
+  "m-0 flex size-11 w-16 cursor-pointer items-center justify-center rounded-lg hover:bg-zinc-50 md:size-9 md:w-16";
 const checkRow =
   "m-0 flex min-h-11 cursor-pointer flex-row items-center gap-3 rounded-lg px-2 text-sm font-normal text-ink hover:bg-zinc-50 md:min-h-9";
 import { useLoad, LoadError, Empty, Pagination } from "./data-pages";
@@ -166,6 +168,8 @@ type UserRecord = {
   active: boolean;
   menus: string[];
   locations: { id: string; name: string }[];
+  viewLocations: { id: string; name: string }[];
+  signBothSides: boolean;
 };
 const menuLabels: Record<string, string> = {
   dashboard: "Overview",
@@ -266,9 +270,24 @@ export function UsersPage() {
                   </td>
                   <td className={table.td}>
                     <CellLabel>{t("Accessible locations")}</CellLabel>
-                    {u.role === "ADMIN"
-                      ? t("All locations")
-                      : u.locations.map((l) => l.name).join(" · ")}
+                    {u.role === "ADMIN" ? (
+                      t("All locations")
+                    ) : (
+                      <>
+                        {u.locations.map((l) => l.name).join(" · ")}
+                        {u.viewLocations.length > 0 && (
+                          <small className="block text-xs text-subtle">
+                            {t("View only")}:{" "}
+                            {u.viewLocations.map((l) => l.name).join(" · ")}
+                          </small>
+                        )}
+                        {u.signBothSides && (
+                          <small className="block text-xs text-subtle">
+                            {t("Can sign both sides")}
+                          </small>
+                        )}
+                      </>
+                    )}
                   </td>
                   <td className={table.td}>
                     <CellLabel>{t("Menu permissions")}</CellLabel>
@@ -341,6 +360,8 @@ export function UsersPage() {
                 accessCode: f.get("accessCode"),
                 role: f.get("role"),
                 locationIds: f.getAll("locations"),
+                viewLocationIds: f.getAll("viewLocations"),
+                signBothSides: f.get("signBothSides") === "on",
                 menus: f.getAll("menus"),
               };
               try {
@@ -355,6 +376,8 @@ export function UsersPage() {
                     {
                       name: values.name,
                       locationIds: values.locationIds,
+                      viewLocationIds: values.viewLocationIds,
+                      signBothSides: values.signBothSides,
                       menus: values.menus,
                     },
                     "PATCH",
@@ -415,24 +438,73 @@ export function UsersPage() {
                 </p>
               </>
             )}
+            {/* Work locations send, sign and see; view-only ones just see. */}
             <fieldset className={fieldset}>
               <legend className={legend}>{t("Accessible locations")}</legend>
-              {locations.data?.map((l) => (
-                <label className={checkRow} key={l.id}>
-                  <input
-                    className={checkbox}
-                    type="checkbox"
-                    name="locations"
-                    value={l.id}
-                    defaultChecked={
-                      modal !== "new" &&
-                      modal.locations.some((x) => x.id === l.id)
-                    }
-                  />
-                  {l.name}
-                </label>
-              ))}
+              <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-2 text-sm">
+                <span className="px-2 text-xs text-subtle">
+                  {t("Location")}
+                </span>
+                <span className="w-16 text-center text-xs text-subtle">
+                  {t("Works here")}
+                </span>
+                <span className="w-16 text-center text-xs text-subtle">
+                  {t("View only")}
+                </span>
+                {locations.data?.map((l) => (
+                  <Fragment key={l.id}>
+                    <span className="px-2">{l.name}</span>
+                    <label className={locationBox}>
+                      <input
+                        className={checkbox}
+                        type="checkbox"
+                        name="locations"
+                        value={l.id}
+                        aria-label={l.name}
+                        defaultChecked={
+                          modal !== "new" &&
+                          modal.locations.some((x) => x.id === l.id)
+                        }
+                      />
+                    </label>
+                    <label className={locationBox}>
+                      <input
+                        className={checkbox}
+                        type="checkbox"
+                        name="viewLocations"
+                        value={l.id}
+                        aria-label={`${t("View only")} · ${l.name}`}
+                        defaultChecked={
+                          modal !== "new" &&
+                          modal.viewLocations.some((x) => x.id === l.id)
+                        }
+                      />
+                    </label>
+                  </Fragment>
+                ))}
+              </div>
+              <p className="m-0 px-2 pt-1 text-xs leading-relaxed text-subtle">
+                {t(
+                  "View only shows that location's transfers. It does not let the user send from it or sign for it.",
+                )}
+              </p>
             </fieldset>
+            <label className={cx(checkRow, "rounded-xl border border-line")}>
+              <input
+                className={checkbox}
+                type="checkbox"
+                name="signBothSides"
+                defaultChecked={modal !== "new" && modal.signBothSides}
+              />
+              <span>
+                {t("Can sign both sides")}
+                <small className="block text-xs text-subtle">
+                  {t(
+                    "Exception: may sign as both sender and receiver of the same transfer.",
+                  )}
+                </small>
+              </span>
+            </label>
             <fieldset className={fieldset}>
               <legend className={legend}>{t("Menu permissions")}</legend>
               {menus.map((m) => (
