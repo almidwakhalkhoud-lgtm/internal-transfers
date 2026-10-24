@@ -10,6 +10,7 @@ import {
   FileText,
   MapPin,
   Plus,
+  Printer,
   RotateCcw,
   Save,
   Search,
@@ -818,10 +819,22 @@ export function RequestDetail({ id }: { id: string }) {
       <PageTitle
         title="Request details"
         action={
-          <Link href="/requests" className={buttonStyles.secondary}>
-            <ArrowRight size={16} className="ltr:rotate-180" />
-            {t("Back")}
-          </Link>
+          <div className="flex gap-2">
+            {/* The order form to print as a picking list. */}
+            <a
+              href={`/print/requests/${id}`}
+              target="_blank"
+              rel="noopener"
+              className={buttonStyles.secondary}
+            >
+              <Printer size={16} />
+              {t("Print")}
+            </a>
+            <Link href="/requests" className={buttonStyles.secondary}>
+              <ArrowRight size={16} className="ltr:rotate-180" />
+              {t("Back")}
+            </Link>
+          </div>
         }
       />
       <LoadError error={error} load={load} />
@@ -1235,10 +1248,12 @@ export function RequestDetail({ id }: { id: string }) {
           {data.status === "OPEN" && (data.canSupply || data.canCancel) && (
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:border-0 md:bg-transparent md:p-0">
               <div className="grid grid-cols-2 gap-2 md:flex md:justify-end">
-                {data.canCancel && (
+                {/* One way to close a request: the asked location declines
+                    it, the person who asked cancels it. */}
+                {data.canCancel && !data.canSupply && (
                   <Button
                     variant="danger"
-                    className={cx(!data.canSupply && "col-span-2")}
+                    className="col-span-2"
                     disabled={busy}
                     onClick={() => {
                       setReason("");

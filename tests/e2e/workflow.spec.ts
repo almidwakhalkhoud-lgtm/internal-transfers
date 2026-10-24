@@ -1940,3 +1940,73 @@ test("a session lasts 30 days instead of 8 hours", async ({ page }) => {
     29 * 24 * 3600_000,
   );
 });
+test("a request prints as the order form and the asked location sees one way to close it", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const [withUnit, noUnit] = await Promise.all([
+    db.product.findUniqueOrThrow({ where: { id: "real-unit" } }),
+    db.product.findUniqueOrThrow({ where: { id: "real-no-unit" } }),
+  ]);
+  const request = await (
+    await post(page.request, "requests", {
+      requesterId: "branch",
+      supplierId: "restricted",
+      remarks: "AUTOMATED TEST ONLY",
+      lines: [
+        { productId: withUnit.id, quantity: "10", unit: withUnit.units[1] },
+        { productId: noUnit.id, quantity: "5", unit: "" },
+      ],
+    })
+  ).json();
+  const supplierContext = await browser.newContext();
+  const supplier = await supplierContext.newPage();
+  await login(supplier, "outside@buzz.test");
+  // Saved progress: another unit, one item missing, one item added.
+  expect(
+    (
+      await supplier.request.patch(`/api/requests/${request.id}`, {
+        data: {
+          lines: [
+            { supplied: "60", unit: withUnit.units[0] },
+            { removed: true },
+          ],
+          added: [{ productId: noUnit.id, supplied: "2", unit: "" }],
+        },
+        headers: { Origin: origin },
+      })
+    ).ok(),
+  ).toBe(true);
+  await supplier.goto(`/requests/${request.id}`);
+  await expect(
+    supplier.getByRole("button", { name: "Decline request" }),
+  ).toBeVisible();
+  await expect(
+    supplier.getByRole("button", { name: "Cancel request" }),
+  ).toHaveCount(0);
+  await supplier.goto(`/print/requests/${request.id}`);
+  const form = supplier.locator("table");
+  await expect(form.getByText("ORDER FORM")).toBeVisible();
+  await expect(form.getByText("SOURCE STOCK")).toBeVisible();
+  await expect(form.getByText(request.number)).toBeVisible();
+  await expect(form.getByText("Not available")).toBeVisible();
+  await expect(form.getByText("Added by source")).toBeVisible();
+  // At least the paper form's 30 numbered rows.
+  await expect(form.locator("tbody tr")).toHaveCount(30);
+  mkdirSync("output/qa", { recursive: true });
+  await supplier.emulateMedia({ media: "print" });
+  await supplier.pdf({
+    path: "output/qa/request-order-form.pdf",
+    format: "A4",
+  });
+  // The person who asked still cancels their own request.
+  await page.goto(`/requests/${request.id}`);
+  await expect(
+    page.getByRole("button", { name: "Cancel request" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Decline request" }),
+  ).toHaveCount(0);
+  await supplierContext.close();
+});
