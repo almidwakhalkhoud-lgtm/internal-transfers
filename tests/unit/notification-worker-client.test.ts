@@ -5,20 +5,12 @@ const source = readFileSync(
   new URL("../../public/notifications-sw.js", import.meta.url),
   "utf8",
 );
-async function push(
-  response: { ok: boolean; json?: () => Promise<unknown> } | Error,
-  data = {
-    id: "incoming-1",
-    title: "Private transfer",
-    body: "Full transfer text",
-    url: "/notifications?notification=incoming-1",
-    lang: "en",
-  },
-) {
+function worker() {
   const handlers: Record<string, (e: unknown) => void> = {};
   const show = vi.fn<
     (title: string, options: Record<string, unknown>) => Promise<void>
   >(async () => {});
+  const fetch = vi.fn(async () => ({ ok: true }));
   const self = {
     location: { origin: "https://example.test" },
     addEventListener: (type: string, handler: (e: unknown) => void) => {
@@ -27,71 +19,70 @@ async function push(
     registration: { showNotification: show },
     clients: { matchAll: async () => [] },
   };
-  runInNewContext(source, {
-    self,
-    URL,
-    fetch: async () => {
-      if (response instanceof Error) throw response;
-      return response;
-    },
-  });
-  let completion: Promise<unknown> | undefined;
-  handlers.push({
-    data: { json: () => data },
-    waitUntil: (p: Promise<unknown>) => {
-      completion = p;
-    },
-  });
-  await completion;
-  return show;
+  runInNewContext(source, { self, URL, fetch });
+  const dispatch = async (type: string, event: object) => {
+    let completion: Promise<unknown> | undefined;
+    handlers[type]({
+      ...event,
+      waitUntil: (p: Promise<unknown>) => {
+        completion = p;
+      },
+    });
+    await completion;
+  };
+  return { show, fetch, dispatch };
 }
-describe("background alerts survive expired sessions without exposing old account data", () => {
-  it.each([new Error("Offline"), { ok: false }])(
-    "shows a generic reminder when the authenticated inbox is unavailable",
-    async (response) => {
-      const show = await push(response);
-      expect(show).toHaveBeenCalledOnce();
-      expect(show.mock.calls[0]).not.toContain("Private transfer");
-      expect(JSON.stringify(show.mock.calls[0])).toContain(
-        "Open your notification inbox",
-      );
-    },
-  );
-  it("suppresses an already acknowledged transfer", async () => {
-    const show = await push({
-      ok: true,
-      json: async () => ({
-        items: [{ acknowledgedAt: new Date().toISOString() }],
-      }),
+const push = async (data: unknown) => {
+  const w = worker();
+  await w.dispatch("push", { data: { json: () => data } });
+  return w;
+};
+describe("every push shows a readable notification at once", () => {
+  it("shows the transfer alert without asking the server first", async () => {
+    const { show, fetch } = await push({
+      id: "incoming-1",
+      title: "ترانسفر ورودی MA-0001",
+      body: "از Main به Al Azaiba",
+      url: "/notifications?notification=incoming-1",
+      lang: "fa",
     });
-    expect(show).not.toHaveBeenCalled();
-  });
-  it("suppresses data when the signed-in user no longer has destination access", async () => {
-    expect(
-      await push({ ok: true, json: async () => ({ items: [] }) }),
-    ).not.toHaveBeenCalled();
-  });
-  it("shows detailed text and a stable recurring tag for an authorized transfer", async () => {
-    const show = await push({
-      ok: true,
-      json: async () => ({
-        items: [
-          {
-            title: "Authorized transfer",
-            acknowledgedAt: null,
-            closedAt: null,
-          },
-        ],
-      }),
-    });
+    expect(fetch).not.toHaveBeenCalled();
     expect(show).toHaveBeenCalledWith(
-      "Authorized transfer",
+      "ترانسفر ورودی MA-0001",
       expect.objectContaining({
-        body: "Full transfer text",
+        body: "از Main به Al Azaiba",
+        dir: "rtl",
+        lang: "fa",
         tag: "transfer:incoming-1",
         renotify: true,
-        requireInteraction: true,
+        data: { url: "/notifications?notification=incoming-1" },
       }),
+    );
+  });
+  it("still shows something for an empty or broken push", async () => {
+    const { show } = await push(undefined);
+    expect(show).toHaveBeenCalledOnce();
+    expect(show.mock.calls[0][0]).toContain("BUZZ");
+  });
+  it("never sends a click to another site", async () => {
+    const { show } = await push({
+      title: "x",
+      url: "https://evil.example/steal",
+      lang: "en",
+    });
+    expect(show.mock.calls[0][1]).toMatchObject({
+      data: { url: "/notifications" },
+    });
+  });
+  it("registers a replaced subscription with the server", async () => {
+    const w = worker();
+    const subscription = { toJSON: () => ({ endpoint: "https://push/1" }) };
+    await w.dispatch("pushsubscriptionchange", {
+      newSubscription: subscription,
+    });
+    expect(w.fetch).toHaveBeenCalledWith(
+      "/api/notifications/push",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

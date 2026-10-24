@@ -26,13 +26,17 @@ function configured() {
 }
 type Message = { title: string; body: string; url: string };
 // Sends to every matching device and reports what the push services said,
-// so a test from Settings can show why nothing arrived.
+// so a test from Settings can show why nothing arrived. A message built per
+// locale reaches each person in the language they use the site in.
 export async function sendPush(
   where: Prisma.PushSubscriptionWhereInput,
-  message: Message,
+  message: Message | ((locale: "fa" | "en") => Message),
 ) {
   if (!configured()) return { sent: 0, errors: ["not configured"] };
-  const subscriptions = await db.pushSubscription.findMany({ where });
+  const subscriptions = await db.pushSubscription.findMany({
+    where,
+    include: { user: { select: { locale: true } } },
+  });
   const errors: string[] = [];
   let sent = 0;
   await Promise.all(
@@ -40,7 +44,7 @@ export async function sendPush(
       webpush
         .sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(message),
+          JSON.stringify(localized(message, s.user.locale)),
           { TTL: 24 * 3600, urgency: "high" },
         )
         .then(() => sent++)
@@ -61,6 +65,16 @@ export async function sendPush(
     ),
   );
   return { sent, errors };
+}
+function localized(
+  message: Message | ((locale: "fa" | "en") => Message),
+  userLocale: string,
+) {
+  const lang = userLocale === "fa" ? "fa" : "en";
+  return {
+    ...(typeof message === "function" ? message(lang) : message),
+    lang,
+  };
 }
 export async function notifyAdmins(message: Message) {
   await sendPush({ user: { role: "ADMIN", active: true } }, message);

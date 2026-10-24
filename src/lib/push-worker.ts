@@ -147,15 +147,17 @@ async function deliver(
   const where = { id, lockToken: token };
   try {
     const payload = JSON.parse(
-      pushPayload(n.id, n.transfer, sub.user.locale, policy),
+      pushPayload(n.id, n.transfer, sub.user.locale, job.successes > 0),
     );
     if (escalation)
-      payload.title = `${sub.user.locale === "fa" ? "بیش از ۳۰ دقیقه بی‌پاسخ" : "Overdue acknowledgment"} · ${payload.title}`;
+      payload.title = `${sub.user.locale === "fa" ? "بی‌پاسخ" : "Overdue"} · ${payload.title}`;
     await send(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify(payload),
       {
-        TTL: 300,
+        // A sleeping tablet or a phone without signal still gets the alert
+        // when it wakes; five minutes dropped too many.
+        TTL: 24 * 3600,
         urgency: "high",
         timeout: 10_000,
         vapidDetails: {

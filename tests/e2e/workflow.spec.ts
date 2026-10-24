@@ -1764,3 +1764,179 @@ test("view-only locations show transfers without signing, and a per-user excepti
   await viewerContext.close();
   await adminContext.close();
 });
+test("a request survives a reload on the device and can be saved as a draft", async ({
+  page,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
+  await page.goto("/requests/new");
+  await page.getByLabel("Request from", { exact: true }).click();
+  await page
+    .getByRole("option", { name: "TEST RESTRICTED LOCATION", exact: true })
+    .click();
+  await page.getByLabel("Deliver to", { exact: true }).click();
+  await page.getByRole("option", { name: "Main", exact: true }).click();
+  await page.getByLabel("Code / Barcode 1", { exact: true }).fill(p.code);
+  await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
+  await page.getByLabel("Quantity 1", { exact: true }).fill("3");
+  // A reload (or a sign-out) keeps what was typed on this device.
+  await page.reload();
+  // The dev server can show the old page for a moment during a reload.
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByText("Your unsent request was restored on this device."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("3");
+  // Saved as a draft on the server, it can be reopened after starting over.
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Draft saved" }),
+  ).toBeVisible();
+  const draft = await db.requestDraft.findFirstOrThrow({
+    where: { userId: "test-staff" },
+    orderBy: { updatedAt: "desc" },
+  });
+  await page.getByRole("button", { name: "Start over", exact: true }).click();
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
+  await page.getByText(/^Saved drafts/).click();
+  await page
+    .locator(`[data-draft="${draft.id}"]`)
+    .getByRole("button", { name: /^Open draft · / })
+    .click();
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("3");
+  await page.getByRole("button", { name: "Send request", exact: true }).click();
+  await expect(page).toHaveURL(/\/requests\/(?!new$)[^/]+$/);
+  // Sending removes the draft and the device copy.
+  expect(await db.requestDraft.findUnique({ where: { id: draft.id } })).toBe(
+    null,
+  );
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("buzz:request-form:test-staff"),
+    ),
+  ).toBe(null);
+});
+test("the supplier sends another unit and adds an item that was not asked for", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const [withUnit, noUnit] = await Promise.all([
+    db.product.findUniqueOrThrow({ where: { id: "real-unit" } }),
+    db.product.findUniqueOrThrow({ where: { id: "real-no-unit" } }),
+  ]);
+  const [asked, other] = withUnit.units;
+  const request = await (
+    await post(page.request, "requests", {
+      requesterId: "branch",
+      supplierId: "restricted",
+      remarks: "",
+      lines: [{ productId: withUnit.id, quantity: "10", unit: asked }],
+    })
+  ).json();
+  const supplierContext = await browser.newContext();
+  const supplier = await supplierContext.newPage();
+  await login(supplier, "outside@buzz.test");
+  // A unit the product does not have is refused.
+  expect(
+    (
+      await post(supplier.request, `requests/${request.id}/fulfill`, {
+        lines: [{ supplied: "10", unit: "NOT-A-UNIT" }],
+      })
+    ).status(),
+  ).toBe(400);
+  await supplier.goto(`/requests/${request.id}`);
+  await supplier.getByLabel("Unit 1", { exact: true }).click();
+  await supplier.getByRole("option", { name: other, exact: true }).click();
+  await supplier.getByRole("button", { name: "Add item", exact: true }).click();
+  await supplier
+    .getByLabel("Added item code 1", { exact: true })
+    .fill(noUnit.code);
+  await supplier
+    .getByLabel("Added item code 1", { exact: true })
+    .press("Enter");
+  await expect(supplier.getByText(noUnit.description)).toBeVisible();
+  await supplier.getByLabel("Added item quantity 1", { exact: true }).fill("4");
+  await supplier
+    .getByRole("button", { name: "Confirm and create transfer", exact: true })
+    .click();
+  await supplier
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirm and generate PDF", exact: true })
+    .click();
+  await expect(
+    supplier.getByText("Transfer Confirmed Successfully"),
+  ).toBeVisible({ timeout: 60000 });
+  const saved = await db.stockRequest.findUniqueOrThrow({
+    where: { id: request.id },
+    include: { transfer: true },
+  });
+  expect(saved.transfer!.lines).toEqual([
+    expect.objectContaining({
+      code: withUnit.code,
+      quantity: "10",
+      unit: other,
+    }),
+    expect.objectContaining({ code: noUnit.code, quantity: "4", unit: "" }),
+  ]);
+  expect(saved.lines).toEqual([
+    expect.objectContaining({ unit: asked, supplyUnit: other }),
+    expect.objectContaining({ code: noUnit.code, added: true }),
+  ]);
+  await supplierContext.close();
+});
+test("devices must turn notifications on when an administrator requires it", async ({
+  page,
+  browser,
+}) => {
+  await db.notificationSettings.update({
+    where: { id: "global" },
+    data: { requireDevice: true },
+  });
+  try {
+    await login(page);
+    const prompt = page.getByRole("dialog", { name: "Turn on notifications" });
+    await expect(prompt).toBeVisible();
+    // Headless Chrome reports notifications as blocked, so the prompt shows
+    // how to allow them and a Try again button instead.
+    await expect(
+      prompt.getByRole("button", {
+        name: /^(Turn on notifications|Try again)$/,
+      }),
+    ).toBeVisible();
+    // Staff cannot skip it; an administrator may, to reach Settings.
+    await expect(prompt.getByRole("button", { name: /Skip/ })).toHaveCount(0);
+    const adminContext = await browser.newContext();
+    const admin = await adminContext.newPage();
+    await login(admin, "admin@buzz.test");
+    await admin
+      .getByRole("dialog", { name: "Turn on notifications" })
+      .getByRole("button", { name: /Skip/ })
+      .click();
+    await expect(
+      admin.getByRole("dialog", { name: "Turn on notifications" }),
+    ).toHaveCount(0);
+    await adminContext.close();
+  } finally {
+    await db.notificationSettings.update({
+      where: { id: "global" },
+      data: { requireDevice: false },
+    });
+  }
+});
+test("a session lasts 30 days instead of 8 hours", async ({ page }) => {
+  await login(page);
+  const cookie = (await page.context().cookies()).find(
+    (c) => c.name === "buzz-session",
+  )!;
+  expect(cookie.expires * 1000 - Date.now()).toBeGreaterThan(
+    29 * 24 * 3600_000,
+  );
+  const session = await db.session.findFirstOrThrow({
+    where: { userId: "test-staff" },
+    orderBy: { expires: "desc" },
+  });
+  expect(session.expires.getTime() - Date.now()).toBeGreaterThan(
+    29 * 24 * 3600_000,
+  );
+});

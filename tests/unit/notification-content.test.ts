@@ -62,7 +62,20 @@ describe("complete notification content", () => {
     expect(notificationContent(t, "fa").body).toContain("00499");
     expect(notificationContent(t, "fa").body).toContain(t.remarks);
     expect(Buffer.byteLength(pushPayload("id", t, "fa"))).toBeLessThan(3800);
-    expect(JSON.parse(pushPayload("id", t, "fa")).body).toContain("متن کامل");
+    expect(JSON.parse(pushPayload("id", t, "fa")).body).toContain("500 قلم");
+  });
+  it("shows a short, readable alert in the user's language", () => {
+    const fa = JSON.parse(pushPayload("n1", transfer, "fa"));
+    expect(fa.lang).toBe("fa");
+    expect(fa.title).toBe(`ترانسفر ورودی ${transfer.number}`);
+    expect(fa.body.split("\n")).toHaveLength(3);
+    expect(fa.body).toContain(
+      `از ${transfer.source} به ${transfer.destination}`,
+    );
+    const en = JSON.parse(pushPayload("n1", transfer, "en", true));
+    expect(en.lang).toBe("en");
+    expect(en.title).toBe(`Reminder: Incoming transfer ${transfer.number}`);
+    expect(en.body).toContain("Tap to view and acknowledge.");
   });
   it("backs off failures without abandoning future retries", () => {
     expect(retryDelay(1)).toBe(60_000);

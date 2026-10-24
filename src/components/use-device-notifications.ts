@@ -3,8 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
 
 type Device = { id: string; createdAt: string; updatedAt: string };
-type Settings = { publicKey: string | null; devices: Device[] };
-const supported = () =>
+type Settings = {
+  publicKey: string | null;
+  devices: Device[];
+  required?: boolean;
+};
+export const supported = () =>
   window.isSecureContext &&
   "serviceWorker" in navigator &&
   "PushManager" in window &&
@@ -14,6 +18,7 @@ export function useDeviceNotifications(userId: string) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(false);
+  const [required, setRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const currentDevice = useRef<string | null>(null);
@@ -56,6 +61,7 @@ export function useDeviceNotifications(userId: string) {
         }
         const settings = await api<Settings>("notifications/push");
         setDevices(settings.devices);
+        setRequired(!!settings.required);
         if (
           !supported() ||
           Notification.permission !== "granted" ||
@@ -168,6 +174,7 @@ export function useDeviceNotifications(userId: string) {
     devices,
     enabled,
     ready,
+    required,
     busy,
     error,
     enable: () => connect(true),

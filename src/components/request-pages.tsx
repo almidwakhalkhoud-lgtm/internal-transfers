@@ -51,6 +51,19 @@ import {
   type RequestLine,
 } from "@/lib/domain";
 import { hasMenu } from "@/lib/permissions";
+import { useFormBackup } from "./form-backup";
+import type { Line } from "./transfer-form";
+type RequestDraftData = {
+  requesterId: string;
+  supplierId: string;
+  remarks: string;
+  lines: Line[];
+};
+type SavedRequestDraft = {
+  id: string;
+  updatedAt: string;
+  data: RequestDraftData;
+};
 type RequestSummary = {
   id: string;
   number: string;
@@ -64,7 +77,8 @@ type RequestSummary = {
   transfer: { id: string; number: string } | null;
 };
 type RequestRecord = Omit<RequestSummary, "lines" | "transfer"> & {
-  lines: RequestLine[];
+  // The supplier also gets each product's units, to send in another one.
+  lines: (RequestLine & { units?: string[] })[];
   remarks: string;
   canCancel: boolean;
   closedAt: string | null;
@@ -316,10 +330,14 @@ export function RequestsPage() {
   );
 }
 export function RequestForm({ initialLineId }: { initialLineId: string }) {
-  const { t } = useBuzz();
+  const { t, user, locale, toast } = useBuzz();
   const router = useRouter();
   const editor = useLines(initialLineId);
-  const { lines, validLines } = editor;
+  const { lines, validLines, setLines } = editor;
+  // The server draft this form is written in; saving again updates it.
+  const [draftKey, setDraftKey] = useState(initialLineId);
+  const [drafts, setDrafts] = useState<SavedRequestDraft[]>([]);
+  const [deleting, setDeleting] = useState<SavedRequestDraft | null>(null);
   const [locations, setLocations] = useState<
     { id: string; name: string; mine: boolean }[]
   >([]);
@@ -329,6 +347,11 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
   const [remarks, setRemarks] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const loadDrafts = () =>
+    api<SavedRequestDraft[]>("request-drafts")
+      .then(setDrafts)
+      .catch(() => {});
   useEffect(() => {
     api<{ id: string; name: string; active: boolean; mine: boolean }[]>(
       "locations",
@@ -339,9 +362,80 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
         // A user tied to one location always requests for it.
         const mine = active.filter((l) => l.mine);
         if (mine.length === 1) setRequester(mine[0].id);
+        setLoaded(true);
       })
       .catch((e) => setError(e.message));
+    void loadDrafts();
   }, []);
+  const data: RequestDraftData = { requesterId, supplierId, remarks, lines };
+  const fill = (d: RequestDraftData) => {
+    if (d.requesterId) setRequester(d.requesterId);
+    setSupplier(d.supplierId ?? "");
+    setRemarks(d.remarks ?? "");
+    if (d.lines?.length) setLines(d.lines);
+  };
+  // Typing is kept on this device until the request is sent.
+  const backup = useFormBackup(
+    `buzz:request-form:${user.id}`,
+    { draftKey, ...data },
+    loaded,
+    (saved) => {
+      const used =
+        !!saved.supplierId ||
+        !!saved.remarks ||
+        !!saved.lines?.some((l) => l.code);
+      if (used) {
+        setDraftKey(saved.draftKey);
+        fill(saved);
+      }
+      return used;
+    },
+  );
+  const name = (id: string) => locations.find((l) => l.id === id)?.name;
+  const draftLabel = (d: SavedRequestDraft) =>
+    `${name(d.data.supplierId) ?? "—"} → ${name(d.data.requesterId) ?? "—"} · ${new Date(
+      d.updatedAt,
+    ).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Dubai",
+    })}`;
+  function startOver() {
+    backup.clear();
+    setDraftKey(crypto.randomUUID());
+    setSupplier("");
+    setRemarks("");
+    setLines([{ id: crypto.randomUUID(), code: "", quantity: "", unit: "" }]);
+  }
+  async function saveDraft() {
+    setBusy(true);
+    setError("");
+    try {
+      await api("request-drafts", { id: draftKey, data });
+      toast(t("Draft saved"), "ok");
+      void loadDrafts();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteDraft(d: SavedRequestDraft) {
+    setBusy(true);
+    try {
+      await api(`request-drafts/${d.id}`, undefined, "DELETE");
+      setDrafts((all) => all.filter((x) => x.id !== d.id));
+      if (d.id === draftKey) startOver();
+      toast(t("Draft deleted"), "ok");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDeleting(null);
+      setBusy(false);
+    }
+  }
   async function submit() {
     setError("");
     const message =
@@ -368,6 +462,7 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
         requesterId,
         supplierId,
         remarks,
+        draftId: draftKey,
         lines: validLines.map((l) => ({
           productId: l.product!.id,
           quantity: l.quantity,
@@ -379,6 +474,7 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
               : undefined,
         })),
       });
+      backup.clear();
       router.push(`/requests/${result.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -400,6 +496,18 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
       />
       <div className="flex flex-col gap-4 pb-28 md:gap-5 md:pb-0">
         {error && <Notice tone="error">{t(error)}</Notice>}
+        {backup.restored && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+            role="status"
+          >
+            <span>{t("Your unsent request was restored on this device.")}</span>
+            <Button onClick={startOver}>
+              <RotateCcw size={16} />
+              {t("Start over")}
+            </Button>
+          </div>
+        )}
         <Card>
           <CardHeader index="01" title={t("Request details")} />
           <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-x-2 gap-y-4 p-4 md:p-6 lg:gap-x-4">
@@ -459,34 +567,125 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
           </div>
         </Card>
         <ItemsCard editor={editor} index="02" title="Requested items" />
+        {drafts.length > 0 && (
+          <details className="rounded-xl border border-line bg-white">
+            <summary className="flex min-h-12 cursor-pointer items-center px-4 text-sm font-semibold">
+              {t("Saved drafts")} ({drafts.length})
+            </summary>
+            <div className="flex flex-col gap-2 px-3 pb-3">
+              {drafts.map((d) => (
+                <span
+                  key={d.id}
+                  data-draft={d.id}
+                  className="flex items-center gap-2"
+                >
+                  <Button
+                    className="flex-1 justify-start"
+                    onClick={() => {
+                      setDraftKey(d.id);
+                      fill(d.data);
+                    }}
+                  >
+                    {t("Open draft")} · {draftLabel(d)}
+                  </Button>
+                  <button
+                    type="button"
+                    className={cx(
+                      iconButton,
+                      "hover:bg-red-50 hover:text-red-700",
+                    )}
+                    aria-label={`${t("Delete draft")} · ${draftLabel(d)}`}
+                    disabled={busy}
+                    onClick={() => setDeleting(d)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:mt-5 md:flex md:justify-end md:border-0 md:bg-transparent md:p-0">
-        <Button
-          variant="primary"
-          className="w-full md:w-auto"
-          disabled={busy}
-          onClick={submit}
-        >
+      <div className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 gap-2 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:mt-5 md:flex md:justify-end md:border-0 md:bg-transparent md:p-0">
+        <Button disabled={busy} onClick={saveDraft}>
+          <Save size={16} />
+          {t("Save draft")}
+        </Button>
+        <Button variant="primary" disabled={busy} onClick={submit}>
           <Send size={16} className="rtl:-scale-x-100" />
           {t(busy ? "Please wait…" : "Send request")}
         </Button>
       </div>
+      {deleting && (
+        <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
+          <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
+            {t("This saved draft and all of its items will be removed.")}
+          </p>
+          <dl className={reviewGrid}>
+            <dt className="text-subtle">{t("Draft")}</dt>
+            <dd className={reviewValue}>{draftLabel(deleting)}</dd>
+          </dl>
+          <div className={modalActions}>
+            <Button
+              data-initial-focus
+              disabled={busy}
+              onClick={() => setDeleting(null)}
+            >
+              {t("Cancel")}
+            </Button>
+            <Button
+              variant="dangerSolid"
+              disabled={busy}
+              onClick={() => deleteDraft(deleting)}
+            >
+              <Trash2 size={16} />
+              {t("Delete draft")}
+            </Button>
+          </div>
+        </Modal>
+      )}
       <DuplicateDialog editor={editor} />
     </>
   );
 }
 // What the supplier has decided for a line, before it is saved.
-type Decision = { supplied: string; removed: boolean };
+type Decision = { supplied: string; removed: boolean; unit: string };
+// An item the supplier adds that was not asked for.
+type Extra = {
+  key: string;
+  code: string;
+  product?: { id: string; code: string; description: string; units: string[] };
+  supplied: string;
+  unit: string;
+  error?: string;
+};
 export function RequestDetail({ id }: { id: string }) {
   const { t, user, locale, toast } = useBuzz();
   const { data, error, load } = useLoad<RequestRecord>(`requests/${id}`);
   // Unsaved edits per line index, on top of what the server holds. A reload
   // clears them so the page shows the saved state again.
   const [edits, setEdits] = useState<Record<number, Decision>>({});
+  const [extras, setExtras] = useState<Extra[]>([]);
   const [loadedAt, setLoadedAt] = useState("");
   if (data && data.updatedAt !== loadedAt) {
     setLoadedAt(data.updatedAt);
     setEdits({});
+    setExtras(
+      data.lines
+        .filter((l) => l.added)
+        .map((l, k) => ({
+          key: `saved-${k}`,
+          code: l.code,
+          product: {
+            id: l.productId,
+            code: l.code,
+            description: l.description,
+            units: l.units ?? (l.unit ? [l.unit] : []),
+          },
+          supplied: l.supplied ?? "",
+          unit: l.unit,
+        })),
+    );
   }
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -502,30 +701,90 @@ export function RequestDetail({ id }: { id: string }) {
     pdfReady: boolean;
   } | null>(null);
   const editing = data?.status === "OPEN" && data.canSupply;
-  const decisions: Decision[] =
-    data?.lines.map(
-      (l, i) =>
-        edits[i] ?? {
-          supplied: l.supplied ?? l.quantity,
-          removed: !!l.removed,
-        },
-    ) ?? [];
+  // While replying, the table holds the asked lines and added items are
+  // edited apart; afterwards it lists every line that was sent.
+  const rows =
+    (editing ? data?.lines.filter((l) => !l.added) : data?.lines) ?? [];
+  const decisions: Decision[] = rows.map(
+    (l, i) =>
+      edits[i] ?? {
+        supplied: l.supplied ?? l.quantity,
+        removed: !!l.removed,
+        unit: l.supplyUnit ?? l.unit,
+      },
+  );
   const set = (i: number, patch: Partial<Decision>) =>
     setEdits((all) => ({ ...all, [i]: { ...decisions[i], ...patch } }));
+  const setExtra = (key: string, patch: Partial<Extra>) =>
+    setExtras((all) =>
+      all.map((e) => (e.key === key ? { ...e, ...patch } : e)),
+    );
+  async function lookupExtra(e: Extra) {
+    const code = e.code.trim();
+    if (!code || e.product?.code === code) return;
+    try {
+      const result = await api<{ items: Extra["product"][] }>(
+        `products?exact=1&q=${encodeURIComponent(code)}`,
+      );
+      const product = result.items.length === 1 ? result.items[0] : undefined;
+      setExtra(e.key, {
+        product,
+        unit: product?.units[0] ?? "",
+        error: product
+          ? undefined
+          : result.items.length
+            ? "Multiple products match. Ask an administrator to review."
+            : "Product not found. Check the exact code.",
+      });
+    } catch (err) {
+      setExtra(e.key, { error: (err as Error).message });
+    }
+  }
   const invalid = decisions.findIndex(
     (d) => !d.removed && !quantity.safeParse(d.supplied).success,
   );
-  const sending = decisions.filter((d) => !d.removed);
+  const badExtra = extras.find(
+    (e) =>
+      (e.code.trim() && !e.product) ||
+      (e.product && !quantity.safeParse(e.supplied).success),
+  );
+  const addedItems = extras.filter((e) => e.product);
+  const sending = [
+    ...decisions.filter((d) => !d.removed),
+    ...addedItems.map((e) => ({ supplied: e.supplied, removed: false })),
+  ];
   const payload = () => ({
     lines: decisions.map((d) =>
-      d.removed ? { removed: true } : { supplied: d.supplied },
+      d.removed ? { removed: true } : { supplied: d.supplied, unit: d.unit },
     ),
+    added: addedItems.map((e) => ({
+      productId: e.product!.id,
+      supplied: e.supplied,
+      unit: e.unit,
+    })),
   });
   const checked = () => {
-    if (invalid < 0) return true;
-    toast(t("Enter a positive quantity with up to 3 decimal places."));
-    document.getElementById(`supply-${invalid}`)?.focus();
-    return false;
+    if (invalid >= 0) {
+      toast(t("Enter a positive quantity with up to 3 decimal places."));
+      document.getElementById(`supply-${invalid}`)?.focus();
+      return false;
+    }
+    if (badExtra) {
+      toast(
+        t(
+          badExtra.product
+            ? "Enter a positive quantity with up to 3 decimal places."
+            : "Look up each added item by its exact code, or remove it.",
+        ),
+      );
+      document
+        .getElementById(
+          `${badExtra.product ? "extra-qty" : "extra-code"}-${badExtra.key}`,
+        )
+        ?.focus();
+      return false;
+    }
+    return true;
   };
   async function run(action: () => Promise<unknown>, done?: string) {
     setBusy(true);
@@ -543,7 +802,8 @@ export function RequestDetail({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  const requested = data ? formatTotal(totalQuantity(data.lines)) : "0";
+  const asked = data?.lines.filter((l) => !l.added) ?? [];
+  const requested = formatTotal(totalQuantity(asked));
   const sent = formatTotal(
     totalQuantity(
       sending
@@ -679,7 +939,7 @@ export function RequestDetail({ id }: { id: string }) {
                   </tr>
                 </thead>
                 <tbody className={table.body}>
-                  {data.lines.map((l, i) => {
+                  {rows.map((l, i) => {
                     const d = decisions[i];
                     const bad =
                       editing &&
@@ -737,8 +997,14 @@ export function RequestDetail({ id }: { id: string }) {
                           )}
                         >
                           <CellLabel>{t("Requested")}</CellLabel>
-                          <span dir="ltr">{l.quantity}</span>
-                          <span className="ms-1 text-subtle">{l.unit}</span>
+                          {l.added ? (
+                            <Badge tone="neutral">{t("Supplier added")}</Badge>
+                          ) : (
+                            <>
+                              <span dir="ltr">{l.quantity}</span>
+                              <span className="ms-1 text-subtle">{l.unit}</span>
+                            </>
+                          )}
                         </td>
                         <td className={cx(table.td, "col-start-1")}>
                           {editing && !d.removed ? (
@@ -762,9 +1028,28 @@ export function RequestDetail({ id }: { id: string }) {
                                   set(i, { supplied: e.target.value })
                                 }
                               />
-                              <span className="text-xs text-subtle">
-                                {l.unit}
-                              </span>
+                              {l.units && l.units.length > 0 ? (
+                                <Dropdown
+                                  className="w-32"
+                                  aria-label={`${t("Unit")} ${i + 1}`}
+                                  value={d.unit}
+                                  onChange={(e) =>
+                                    set(i, { unit: e.target.value })
+                                  }
+                                >
+                                  {[...new Set([l.unit, ...l.units])]
+                                    .filter(Boolean)
+                                    .map((u) => (
+                                      <option key={u} value={u}>
+                                        {u}
+                                      </option>
+                                    ))}
+                                </Dropdown>
+                              ) : (
+                                <span className="text-xs text-subtle">
+                                  {l.unit}
+                                </span>
+                              )}
                             </label>
                           ) : d.removed ? (
                             <Badge tone="bad">{t("Not available")}</Badge>
@@ -773,7 +1058,7 @@ export function RequestDetail({ id }: { id: string }) {
                               <CellLabel>{t("Sent")}</CellLabel>
                               <span dir="ltr">{l.supplied ?? l.quantity}</span>
                               <span className="ms-1 font-normal text-subtle">
-                                {l.unit}
+                                {l.supplyUnit ?? l.unit}
                               </span>
                             </span>
                           ) : (
@@ -816,7 +1101,7 @@ export function RequestDetail({ id }: { id: string }) {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-zinc-50/60 px-4 py-3 text-sm text-subtle md:px-5">
               <span>
-                {data.lines.length} {t("items")} · {t("Requested")}{" "}
+                {asked.length} {t("items")} · {t("Requested")}{" "}
                 <strong className="text-ink tabular-nums" dir="ltr">
                   {showTotal(requested)}
                 </strong>
@@ -831,6 +1116,120 @@ export function RequestDetail({ id }: { id: string }) {
               )}
             </div>
           </Card>
+          {editing && (
+            <Card>
+              <CardHeader title={t("Items you add")} />
+              <div className="flex flex-col gap-3 p-4 md:p-5">
+                <p className="m-0 text-sm text-muted">
+                  {t(
+                    "Add items that were not asked for, if you are sending them too.",
+                  )}
+                </p>
+                {extras.map((e, k) => (
+                  <div
+                    key={e.key}
+                    className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-line p-3 md:grid-cols-[10rem_1fr_8rem_9rem_auto]"
+                  >
+                    <input
+                      id={`extra-code-${e.key}`}
+                      className={cx(inputStyles, "font-semibold")}
+                      aria-label={`${t("Added item code")} ${k + 1}`}
+                      placeholder={t("Scan or enter code")}
+                      dir="ltr"
+                      autoComplete="off"
+                      value={e.code}
+                      onChange={(ev) =>
+                        setExtra(e.key, {
+                          code: ev.target.value.toUpperCase(),
+                          product: undefined,
+                          error: undefined,
+                        })
+                      }
+                      onBlur={() => void lookupExtra(e)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter") {
+                          ev.preventDefault();
+                          void lookupExtra(e);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={cx(
+                        iconButton,
+                        "hover:bg-red-50 hover:text-red-700 md:order-last",
+                      )}
+                      aria-label={`${t("Remove added item")} ${k + 1}`}
+                      onClick={() =>
+                        setExtras((all) => all.filter((x) => x.key !== e.key))
+                      }
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                    <span
+                      className={cx(
+                        "col-span-2 text-sm md:col-span-1",
+                        e.error ? "text-red-700" : "text-muted",
+                      )}
+                      dir="auto"
+                    >
+                      {e.error ? t(e.error) : (e.product?.description ?? "—")}
+                    </span>
+                    <input
+                      id={`extra-qty-${e.key}`}
+                      className={cx(
+                        inputStyles,
+                        "text-center font-semibold tabular-nums",
+                      )}
+                      aria-label={`${t("Added item quantity")} ${k + 1}`}
+                      dir="ltr"
+                      inputMode="decimal"
+                      disabled={!e.product}
+                      value={e.supplied}
+                      onChange={(ev) =>
+                        setExtra(e.key, { supplied: ev.target.value })
+                      }
+                    />
+                    {e.product && e.product.units.length > 0 ? (
+                      <Dropdown
+                        aria-label={`${t("Added item unit")} ${k + 1}`}
+                        value={e.unit}
+                        onChange={(ev) =>
+                          setExtra(e.key, { unit: ev.target.value })
+                        }
+                      >
+                        {e.product.units.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </Dropdown>
+                    ) : (
+                      <span className="text-xs text-subtle">{e.unit}</span>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  className="self-start"
+                  disabled={busy}
+                  onClick={() =>
+                    setExtras((all) => [
+                      ...all,
+                      {
+                        key: crypto.randomUUID(),
+                        code: "",
+                        supplied: "",
+                        unit: "",
+                      },
+                    ])
+                  }
+                >
+                  <Plus size={16} />
+                  {t("Add item")}
+                </Button>
+              </div>
+            </Card>
+          )}
           {transfer && <SuccessActions transfer={transfer} />}
           {data.status === "OPEN" && (data.canSupply || data.canCancel) && (
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:border-0 md:bg-transparent md:p-0">
@@ -921,7 +1320,7 @@ export function RequestDetail({ id }: { id: string }) {
             <dd className={reviewValue}>{sending.length}</dd>
             <dt className="text-subtle">{t("Not available")}</dt>
             <dd className={reviewValue}>
-              {data.lines.length - sending.length}
+              {decisions.filter((d) => d.removed).length}
             </dd>
             <dt className="text-subtle">{t("Total quantity")}</dt>
             <dd className={reviewValue} dir="ltr">

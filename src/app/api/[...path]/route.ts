@@ -26,6 +26,7 @@ import {
   sequenceOf,
   validateCatalog,
   type CatalogRow,
+  type RequestLine,
 } from "@/lib/domain";
 import { confirmTransfer, transferPdf } from "@/lib/transfers";
 import {
@@ -70,6 +71,16 @@ function dispatchAfterResponse() {
       console.error("Notification dispatch deferred to scheduled retry.");
     }
   });
+}
+// Open pages ask for the inbox every few seconds. When no scheduler has run
+// the outbox for a minute, that request runs it, so alerts and reminders go
+// out even without an outside cron. Parallel runs are safe (SKIP LOCKED).
+async function dispatchIfIdle() {
+  const worker = await db.notificationWorker.findUnique({
+    where: { id: "push" },
+  });
+  if (!worker || Date.now() - worker.checkedAt.getTime() > 60_000)
+    dispatchAfterResponse();
 }
 const userSelect = {
   id: true,
@@ -318,6 +329,7 @@ async function handle(
     }
     // Every assigned shop can use its inbox, independently of menu permissions.
     if (path === "notifications" && method === "GET") {
+      await dispatchIfIdle();
       const page = Math.max(
         0,
         Math.min(100000, Number(req.nextUrl.searchParams.get("page")) || 0),
@@ -345,8 +357,13 @@ async function handle(
           select: { id: true, createdAt: true, updatedAt: true },
           orderBy: { updatedAt: "desc" },
         });
+        const publicKey = process.env.VAPID_PUBLIC_KEY ?? null;
+        // A device can only be required to turn alerts on when push works.
+        const required =
+          !!publicKey &&
+          (await getNotificationPolicy()).requireDevice !== false;
         return NextResponse.json(
-          { publicKey: process.env.VAPID_PUBLIC_KEY ?? null, devices },
+          { publicKey, devices, required },
           { headers: { "Cache-Control": "private, no-store" } },
         );
       }
@@ -436,7 +453,10 @@ async function handle(
             path.startsWith("drafts/") ||
             (path === "transfers" && method === "POST")
           ? "new-transfer"
-          : path === "requests" || path.startsWith("requests/")
+          : path === "requests" ||
+              path.startsWith("requests/") ||
+              path === "request-drafts" ||
+              path.startsWith("request-drafts/")
             ? "requests"
             : path.endsWith("/pdf") &&
                 (hasMenu(user, "new-transfer") || hasMenu(user, "requests"))
@@ -702,6 +722,49 @@ async function handle(
         count: await db.transfer.count({ where }),
       });
     }
+    // A request being prepared, kept for its author to reopen and send later.
+    if (path === "request-drafts") {
+      if (method === "GET")
+        return NextResponse.json(
+          await db.requestDraft.findMany({
+            where: { userId: user.id },
+            orderBy: { updatedAt: "desc" },
+            take: 20,
+          }),
+          { headers: { "Cache-Control": "private, no-store" } },
+        );
+      if (method === "POST") {
+        const input = z
+          .object({ id: z.uuid(), data: z.record(z.string(), z.unknown()) })
+          .parse(await req.json());
+        if (JSON.stringify(input.data).length > 1_000_000)
+          throw new HttpError(400, "The draft is too large");
+        const existing = await db.requestDraft.findUnique({
+          where: { id: input.id },
+        });
+        if (existing && existing.userId !== user.id)
+          throw new HttpError(403, "Draft access denied");
+        const data = input.data as Prisma.InputJsonObject;
+        return NextResponse.json(
+          existing
+            ? await db.requestDraft.update({
+                where: { id: input.id },
+                data: { data },
+              })
+            : await db.requestDraft.create({
+                data: { id: input.id, userId: user.id, data },
+              }),
+        );
+      }
+    }
+    const requestDraft = path.match(/^request-drafts\/([^/]+)$/);
+    if (requestDraft && method === "DELETE") {
+      const result = await db.requestDraft.deleteMany({
+        where: { id: requestDraft[1], userId: user.id },
+      });
+      if (!result.count) throw new HttpError(404, "Draft not found");
+      return NextResponse.json({ ok: true });
+    }
     if (path === "requests" && method === "POST") {
       const r = await createRequest(user, await req.json());
       return NextResponse.json({ id: r.id, number: r.number });
@@ -756,8 +819,24 @@ async function handle(
       const [, id, action] = requestMatch;
       if (!action && method === "GET") {
         const { transfer, ...r } = await findRequest(user, id);
+        const supplier = r.status === "OPEN" && canSupply(user, r);
+        // The supplier may send a line in any of its product's units.
+        const units = supplier
+          ? await db.product.findMany({
+              where: {
+                id: { in: (r.lines as RequestLine[]).map((l) => l.productId) },
+              },
+              select: { id: true, units: true },
+            })
+          : [];
         return NextResponse.json({
           ...r,
+          lines: (r.lines as RequestLine[]).map((l) => ({
+            ...l,
+            ...(supplier
+              ? { units: units.find((p) => p.id === l.productId)?.units ?? [] }
+              : {}),
+          })),
           transfer: transfer && {
             id: transfer.id,
             number: transfer.number,
@@ -1141,10 +1220,14 @@ async function handle(
       return NextResponse.json({ ok: true });
     }
     if (path === "push/test" && method === "POST") {
-      const result = await sendPush(
-        { userId: user.id },
-        { title: "BUZZ", body: "Notifications are working.", url: "/settings" },
-      );
+      const result = await sendPush({ userId: user.id }, (locale) => ({
+        title: "BUZZ",
+        body:
+          locale === "fa"
+            ? "اعلان‌ها روی این دستگاه کار می‌کنند."
+            : "Notifications are working on this device.",
+        url: "/settings",
+      }));
       if (!result.sent)
         return NextResponse.json(
           {

@@ -69,38 +69,38 @@ export function notificationContent(
   return { title, body, status, route };
 }
 
+// What the phone shows: a short title and three plain lines in the user's
+// language. The full text, every item and the remarks stay in the inbox.
 export function pushPayload(
   id: string,
   t: NotificationTransfer,
   locale: string,
-  policy: NotificationPolicy = DEFAULT_NOTIFICATION_POLICY,
+  reminder = false,
 ) {
-  const full = notificationContent(t, locale, policy);
-  const url = `/notifications?notification=${encodeURIComponent(id)}`;
-  const data = {
-    id,
-    title: full.title,
-    body: full.body,
-    url,
-    lang: locale === "fa" ? "fa" : "en",
-  };
-  // Push services have a byte limit; the durable inbox always contains every line.
-  if (new TextEncoder().encode(JSON.stringify(data)).length <= 3000)
-    return JSON.stringify(data);
+  const fa = locale === "fa";
+  const lines = t.lines as SnapshotLine[];
+  const title = fa
+    ? `${reminder ? "یادآوری: " : ""}ترانسفر ورودی ${t.number}`
+    : `${reminder ? "Reminder: " : ""}Incoming transfer ${t.number}`;
+  const body = (
+    fa
+      ? [
+          `از ${t.source} به ${t.destination}`,
+          `${lines.length} قلم · مجموع ${t.total.toString()}`,
+          "برای دیدن و ثبت اطلاع، روی این پیام بزنید.",
+        ]
+      : [
+          `From ${t.source} to ${t.destination}`,
+          `${lines.length} ${lines.length === 1 ? "item" : "items"} · total ${t.total.toString()}`,
+          "Tap to view and acknowledge.",
+        ]
+  ).join("\n");
   return JSON.stringify({
-    ...data,
-    title:
-      locale === "fa"
-        ? `ترانسفر ورودی ${t.number}`
-        : `Incoming transfer ${t.number}`,
-    body: [
-      full.route.slice(0, 500),
-      `${locale === "fa" ? "وضعیت" : "Status"}: ${full.status}`,
-      `${locale === "fa" ? "ردیف‌ها / مجموع مقدار" : "Line items / total quantity"}: ${(t.lines as SnapshotLine[]).length} / ${t.total}`,
-      locale === "fa"
-        ? `متن کامل، تمام اقلام و توضیحات در مرکز اعلان‌هاست. برای بررسی و ثبت اطلاع باز کنید. ${reminderSummary(policy, locale)}`
-        : `Full text, all items and remarks are in your notification inbox. Open to review and acknowledge. ${reminderSummary(policy, locale)}`,
-    ].join("\n"),
+    id,
+    title,
+    body,
+    url: `/notifications?notification=${encodeURIComponent(id)}`,
+    lang: fa ? "fa" : "en",
   });
 }
 

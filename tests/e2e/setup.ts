@@ -8,8 +8,15 @@ export default async function setup() {
   const db = new PrismaClient();
   // The reset is confined to a fixed, dedicated test database.
   await db.$executeRawUnsafe(
-    'TRUNCATE "Session", "LoginAttempt", "StockRequest", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence" CASCADE',
+    'TRUNCATE "Session", "LoginAttempt", "StockRequest", "Transfer", "Draft", "Audit", "CatalogConflict", "Barcode", "Product", "_LocationToUser", "Location", "User", "Sequence", "RequestDraft" CASCADE',
   );
+  // The required-notifications prompt would cover every page; the test that
+  // checks it turns it on for itself.
+  await db.notificationSettings.upsert({
+    where: { id: "global" },
+    create: { id: "global", requireDevice: false },
+    update: { requireDevice: false },
+  });
   const source = new PrismaClient({
     datasourceUrl: process.env.BUZZ_PRODUCTION_DATABASE_URL,
   });

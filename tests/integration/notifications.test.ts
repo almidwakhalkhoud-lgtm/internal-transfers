@@ -462,8 +462,9 @@ describe.sequential("durable destination notifications", () => {
   });
   it("persists administrator policy atomically, validates limits and denies staff changes", async () => {
     expect(await getNotificationPolicy()).toEqual({
-      intervalMinutes: 5,
-      maxReminders: null,
+      intervalMinutes: 360,
+      maxReminders: 2,
+      requireDevice: true,
     });
     await expect(
       saveNotificationPolicy(recipient, {
@@ -481,8 +482,9 @@ describe.sequential("durable destination notifications", () => {
     ])
       await expect(saveNotificationPolicy(admin, policy)).rejects.toThrow();
     expect(await getNotificationPolicy()).toEqual({
-      intervalMinutes: 5,
-      maxReminders: null,
+      intervalMinutes: 360,
+      maxReminders: 2,
+      requireDevice: true,
     });
     await saveNotificationPolicy(admin, {
       intervalMinutes: 12,
@@ -491,12 +493,17 @@ describe.sequential("durable destination notifications", () => {
     expect(await getNotificationPolicy()).toEqual({
       intervalMinutes: 12,
       maxReminders: 3,
+      requireDevice: true,
     });
     const audit = await db.audit.findFirstOrThrow({
       where: { action: "NOTIFICATION_SETTINGS_UPDATED", actor: admin.id },
       orderBy: { createdAt: "desc" },
     });
-    expect(audit.detail).toEqual({ intervalMinutes: 12, maxReminders: 3 });
+    expect(audit.detail).toEqual({
+      intervalMinutes: 12,
+      maxReminders: 3,
+      requireDevice: true,
+    });
   });
   it("uses the configured interval and applies increases and decreases to existing deliveries", async () => {
     const n = await makeTransfer();
@@ -541,7 +548,11 @@ describe.sequential("durable destination notifications", () => {
       ([sub]) => sub.endpoint === data.endpoint,
     );
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(String(calls[0][1])).body).toContain("هر 2 دقیقه");
+    // The phone shows a short alert; the reminder schedule is in the inbox.
+    expect(JSON.parse(String(calls[0][1])).title).toContain("یادآوری");
+    expect(
+      (await notificationInbox(recipient, 0, false)).items[0].body,
+    ).toContain("هر 2 دقیقه");
   });
   it("caps successful reminders per device, preserves the inbox and resumes when the cap is raised", async () => {
     const n = await makeTransfer();

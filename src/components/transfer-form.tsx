@@ -4,6 +4,7 @@ import { Dropdown } from "./dropdown";
 import Link from "next/link";
 import { DatePicker } from "./date-picker";
 import { Modal } from "./modal";
+import { useFormBackup } from "./form-backup";
 export { Modal } from "./modal";
 import {
   useState,
@@ -51,12 +52,7 @@ const reviewGrid =
 const reviewValue = "m-0 text-end font-semibold";
 const modalActions = "mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end";
 import { api, downloadBlob } from "@/lib/client";
-import {
-  quantity,
-  totalQuantity,
-  formatTotal,
-  renamable,
-} from "@/lib/domain";
+import { quantity, totalQuantity, formatTotal, renamable } from "@/lib/domain";
 export type Product = {
   updatedAt: string;
   id: string;
@@ -246,7 +242,7 @@ export function TransferForm({
   initialKey: string;
   initialLineId: string;
 }) {
-  const { t, locale } = useBuzz();
+  const { t, locale, user } = useBuzz();
   const editor = useLines(initialLineId);
   const { lines, setLines, validLines, total } = editor;
   const [locations, setLocations] = useState<
@@ -261,6 +257,7 @@ export function TransferForm({
   );
   const [remarks, setRemarks] = useState("");
   const [key, setKey] = useState(initialKey);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -273,6 +270,25 @@ export function TransferForm({
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [deleting, setDeleting] = useState<SavedDraft | null>(null);
   const data = { sourceId, destinationId, date, remarks, lines };
+  // Typing is kept on this device until the transfer is confirmed, so a
+  // reload or a sign-out does not lose it.
+  const backup = useFormBackup(
+    `buzz:transfer-form:${user.id}`,
+    { key, ...data },
+    loaded,
+    (saved) => {
+      const used = !!saved.remarks || !!saved.lines?.some((l) => l.code);
+      if (used) {
+        setKey(saved.key);
+        if (saved.sourceId) setSource(saved.sourceId);
+        setDestination(saved.destinationId ?? "");
+        if (saved.date) setDate(saved.date);
+        setRemarks(saved.remarks ?? "");
+        setLines(saved.lines);
+      }
+      return used;
+    },
+  );
   // A draft has no number yet, so it is named by its route and save time.
   const draftLabel = (d: SavedDraft) =>
     `${name(d.data.sourceId) ?? "—"} → ${name(d.data.destinationId) ?? "—"} · ${new Date(
@@ -301,6 +317,7 @@ export function TransferForm({
         // A user tied to one location always transfers from it.
         const mine = active.filter((l) => l.mine);
         if (mine.length === 1) setSource(mine[0].id);
+        setLoaded(true);
       })
       .catch((e) => setError(e.message));
     loadDrafts();
@@ -386,6 +403,7 @@ export function TransferForm({
           duplicateAccepted: l.duplicateAccepted,
         })),
       });
+      backup.clear();
       setSuccess(result);
       setReview(false);
     } catch (e) {
@@ -472,6 +490,11 @@ export function TransferForm({
       <div className="flex flex-col gap-4 pb-28 md:gap-5 md:pb-0">
         {error && <Notice tone="error">{t(error)}</Notice>}
         {notice && <Notice>{t(notice)}</Notice>}
+        {backup.restored && (
+          <Notice>
+            {t("Your unsaved transfer was restored on this device.")}
+          </Notice>
+        )}
         <Card>
           <CardHeader index="01" title={t("Transfer details")}>
             <Status value="DRAFT" />

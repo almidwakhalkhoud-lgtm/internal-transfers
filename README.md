@@ -99,7 +99,7 @@ npm run build
 npm run start
 ```
 
-Open the private setup URL from `.postgres/admin-setup-link.txt` and create the administrator account. Passwords are hashed using bcrypt with cost 12. Sessions use random opaque tokens, hashed in the database, with HttpOnly/SameSite cookies and an eight-hour expiry. Login attempts are limited per account. Deactivation and credential changes revoke sessions. The initial password path is limited to the first administrator until an access code is issued.
+Open the private setup URL from `.postgres/admin-setup-link.txt` and create the administrator account. Passwords are hashed using bcrypt with cost 12. Sessions use random opaque tokens, hashed in the database, with HttpOnly/SameSite cookies. A session lasts 30 days and renews itself (at most daily) while the app is used, so shop tablets stay signed in through calls and reloads; it ends after 30 idle days. Login attempts are limited per account. Deactivation and credential changes revoke sessions. The initial password path is limited to the first administrator until an access code is issued.
 
 An interactive alternative for provisioning an administrator is `npm run admin`; it accepts the password through hidden terminal input, never a command argument.
 

@@ -134,6 +134,25 @@ export function NotificationPolicySettings({
               </label>
             )}
           </div>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 size-4 accent-brand"
+              checked={policy.requireDevice !== false}
+              onChange={(e) => {
+                setSaved(false);
+                setPolicy({ ...policy, requireDevice: e.target.checked });
+              }}
+            />
+            <span>
+              {t("Require notifications on every device")}
+              <small className="block text-xs text-muted">
+                {t(
+                  "Each signed-in device must turn notifications on before it can use the app.",
+                )}
+              </small>
+            </span>
+          </label>
           <p>
             {Number.isFinite(policy.intervalMinutes) &&
             (policy.maxReminders === null ||

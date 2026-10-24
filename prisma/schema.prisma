@@ -188,6 +188,16 @@ model StockRequest {
   @@index([requesterId, status])
 }
 
+// A request being prepared, saved by its author to finish later.
+model RequestDraft {
+  id        String   @id
+  userId    String
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
 // An unconfirmed transfer. It holds no number; one is taken on confirmation.
 model Draft {
   id        String   @id
@@ -292,7 +302,9 @@ model NotificationWorker {
 }
 
 model NotificationSettings {
-  id              String @id @default("global")
-  intervalMinutes Int    @default(5)
-  maxReminders    Int?
+  id              String  @id @default("global")
+  intervalMinutes Int     @default(360)
+  maxReminders    Int?    @default(2)
+  // Every signed-in device must turn notifications on before it can be used.
+  requireDevice   Boolean @default(true)
 }

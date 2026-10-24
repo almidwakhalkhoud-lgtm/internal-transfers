@@ -3,70 +3,72 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
   event.waitUntil(self.clients.claim()),
 );
+// Every push shows a notification at once. Phones penalise a push that shows
+// nothing (Android posts a generic notice, iPhone ends the subscription), and
+// a network check first is slow or fails on a sleeping tablet. The server
+// already stops sending once a transfer is acknowledged.
 self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = (event.data ? event.data.json() : null) || {};
+  } catch {
+    data = {};
+  }
+  const lang = data.lang === "fa" ? "fa" : "en";
+  let url = new URL("/notifications", self.location.origin);
+  try {
+    const target = new URL(data.url || "/notifications", self.location.origin);
+    if (target.origin === self.location.origin) url = target;
+  } catch {
+    /* Keep the inbox. */
+  }
+  const title =
+    data.title || (lang === "fa" ? "BUZZ · اعلان جدید" : "BUZZ · New alert");
+  const options = {
+    body: data.body || "",
+    icon: "/logo.jpeg",
+    badge: "/logo.jpeg",
+    lang,
+    dir: lang === "fa" ? "rtl" : "ltr",
+    vibrate: [200, 100, 200],
+    data: { url: url.pathname + url.search },
+    // One notification per transfer: a reminder replaces it and rings again.
+    ...(data.id
+      ? { tag: `transfer:${data.id}`, renotify: true, requireInteraction: true }
+      : {}),
+  };
   event.waitUntil(
     (async () => {
-      let data;
-      try {
-        data = event.data.json();
-      } catch {
-        return;
-      }
-      const url = new URL(data.url || "/notifications", self.location.origin);
-      if (url.origin !== self.location.origin) return;
-      if (!data.id) {
-        // Existing request alerts and the Settings test use the same registration.
-        if (!/^\/(requests|transfers|settings)(\/|$)/.test(url.pathname))
-          return;
-        await self.registration.showNotification(data.title || "BUZZ", {
-          body: data.body || "",
-          icon: "/logo.jpeg",
-          badge: "/logo.jpeg",
-          data: { url: url.pathname + url.search },
-        });
-        return;
-      }
-      if (url.pathname !== "/notifications") return;
-      // Recheck the user's inbox when online so delayed pushes do not expose an old account's data.
-      try {
-        const response = await fetch(
-          `/api/notifications?id=${encodeURIComponent(data.id)}`,
-          { cache: "no-store", credentials: "include" },
-        );
-        if (!response.ok)
-          throw new Error("Inbox unavailable or sign-in expired");
-        const inbox = await response.json();
-        const item = inbox.items?.[0];
-        if (!item || item.acknowledgedAt || item.closedAt) return;
-        data = { ...data, title: item.title };
-      } catch {
-        // Offline or expired-session pushes still alert, with details behind sign-in.
-        data = {
-          ...data,
-          title: "BUZZ · Transfer reminder / یادآوری ترانسفر",
-          body: "Open your notification inbox to review incoming transfers. / برای بررسی ترانسفرهای ورودی مرکز اعلان‌ها را باز کنید.",
-        };
-      }
-      await self.registration.showNotification(data.title, {
-        body: data.body,
-        icon: "/logo.jpeg",
-        badge: "/logo.jpeg",
-        tag: `transfer:${data.id}`,
-        renotify: true,
-        requireInteraction: true,
-        lang: data.lang,
-        dir: data.lang === "fa" ? "rtl" : "ltr",
-        data: { url: url.pathname + url.search },
-        actions: [
-          {
-            action: "open",
-            title:
-              data.lang === "fa" ? "مشاهده متن کامل" : "View full notification",
-          },
-        ],
-      });
-      for (const client of await self.clients.matchAll({ type: "window" }))
+      await self.registration.showNotification(title, options);
+      for (const client of await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      }))
         client.postMessage({ type: "TRANSFER_NOTIFICATION" });
+    })(),
+  );
+});
+// The browser may replace a subscription; register the new one at once so
+// alerts keep arriving without anyone opening the app.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const key = event.oldSubscription?.options?.applicationServerKey;
+      const subscription =
+        event.newSubscription ??
+        (key
+          ? await self.registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: key,
+            })
+          : null);
+      if (!subscription) return;
+      await fetch("/api/notifications/push", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
     })(),
   );
 });
@@ -83,9 +85,12 @@ self.addEventListener("notificationclick", (event) => {
         type: "window",
         includeUncontrolled: true,
       })) {
-        if ("navigate" in client) {
-          await client.navigate(url.href);
-          return client.focus();
+        try {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(url.href);
+          return;
+        } catch {
+          /* Try the next window, or open one. */
         }
       }
       return self.clients.openWindow(url.href);

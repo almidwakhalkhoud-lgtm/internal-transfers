@@ -653,6 +653,50 @@ export const fa: Record<string, string> = {
   "You cannot sign this side of the transfer":
     "شما اجازهٔ امضای این بخش از انتقال را ندارید",
   TRANSFER_SIGNED: "امضای انتقال",
+  "Turn on notifications": "روشن کردن اعلان\u200cها",
+  "Incoming transfers and requests must reach this device even when the app is closed. Turn on notifications to continue.":
+    "ترانسفرها و طلبیه\u200cهای ورودی باید حتی وقتی برنامه بسته است به این دستگاه برسند. برای ادامه، اعلان\u200cها را روشن کنید.",
+  "Tap the Share button in Safari.":
+    "در Safari دکمهٔ اشتراک\u200cگذاری (Share) را بزنید.",
+  "Choose Add to Home Screen, then Add.":
+    "گزینهٔ Add to Home Screen و بعد Add را بزنید.",
+  "Open BUZZ from the Home Screen and sign in.":
+    "BUZZ را از صفحهٔ اصلی گوشی باز کنید و وارد شوید.",
+  "Tap Turn on notifications and choose Allow.":
+    "«روشن کردن اعلان\u200cها» را بزنید و Allow را انتخاب کنید.",
+  "This browser cannot receive notifications. Open BUZZ in Chrome or Edge, or on iPhone and iPad add it to the Home Screen.":
+    "این مرورگر اعلان دریافت نمی\u200cکند. BUZZ را در Chrome یا Edge باز کنید، یا در iPhone و iPad آن را به صفحهٔ اصلی اضافه کنید.",
+  "Notifications are blocked for this site. Tap the lock or settings icon next to the address.":
+    "اعلان\u200cها برای این سایت مسدود شده\u200cاند. روی آیکون قفل یا تنظیمات کنار آدرس سایت بزنید.",
+  "Set Notifications to Allow.":
+    "گزینهٔ Notifications (اعلان\u200cها) را روی Allow (اجازه) بگذارید.",
+  "Come back here and tap Try again.":
+    "به اینجا برگردید و «دوباره امتحان کنید» را بزنید.",
+  "Try again": "دوباره امتحان کنید",
+  "Skip on this device for now (administrators only)":
+    "فعلاً روی این دستگاه رد شو (فقط مدیر)",
+  "Require notifications on every device":
+    "روشن بودن اعلان روی همهٔ دستگاه\u200cها اجباری باشد",
+  "Each signed-in device must turn notifications on before it can use the app.":
+    "هر دستگاهی که وارد حساب می\u200cشود، باید پیش از استفاده از برنامه اعلان\u200cها را روشن کند.",
+  "Your unsent request was restored on this device.":
+    "طلبیهٔ ارسال\u200cنشدهٔ شما روی این دستگاه بازیابی شد.",
+  "Your unsaved transfer was restored on this device.":
+    "ترانسفر ذخیره\u200cنشدهٔ شما روی این دستگاه بازیابی شد.",
+  "Start over": "شروع از نو",
+  "This saved draft and all of its items will be removed.":
+    "این پیش\u200cنویس و همهٔ اقلام آن حذف می\u200cشود.",
+  "Supplier added": "اضافه\u200cشده توسط تأمین\u200cکننده",
+  "Items you add": "اقلامی که اضافه می\u200cکنید",
+  "Add items that were not asked for, if you are sending them too.":
+    "اگر کالایی را که خواسته نشده هم می\u200cفرستید، اینجا اضافه کنید.",
+  "Added item code": "کد قلم اضافه\u200cشده",
+  "Added item quantity": "مقدار قلم اضافه\u200cشده",
+  "Added item unit": "واحد قلم اضافه\u200cشده",
+  "Remove added item": "حذف قلم اضافه\u200cشده",
+  "Look up each added item by its exact code, or remove it.":
+    "هر قلم اضافه\u200cشده را با کد دقیق جست\u200cوجو کنید، یا آن را حذف کنید.",
+  "The draft is too large": "پیش\u200cنویس بیش از حد بزرگ است",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

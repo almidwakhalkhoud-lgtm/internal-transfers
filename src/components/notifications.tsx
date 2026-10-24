@@ -21,7 +21,10 @@ import {
 import { NotificationPolicySettings } from "./notification-policy-settings";
 import { useBuzz } from "./shell";
 
-import { useDeviceNotifications } from "./use-device-notifications";
+import {
+  supported as pushSupported,
+  useDeviceNotifications,
+} from "./use-device-notifications";
 
 const notificationUrl = "/settings?tab=notifications";
 
@@ -254,28 +257,34 @@ export function NotificationBanner() {
     (user.role !== "ADMIN" || query.get("tab") === "notifications");
   return (
     <div className="notification-banners">
-      {!inNotificationSettings && device?.ready && !device.enabled && (
-        <div className="notification-activation">
-          <Bell size={20} />
-          <span>
-            {t(
-              "Enable alerts on this device so incoming transfers reach you when the app is closed.",
-            )}
-          </span>
-          <button
-            className="button primary"
-            disabled={device.busy}
-            onClick={() => void device.enable()}
-          >
-            {t(device.busy ? "Enabling…" : "Enable device notifications")}
-          </button>
-          {device.error && (
-            <p className="error" role="alert">
-              {t(device.error)}
-            </p>
-          )}
-        </div>
+      {device?.ready && device.required && !device.enabled && (
+        <RequireNotifications device={device} />
       )}
+      {!inNotificationSettings &&
+        device?.ready &&
+        !device.required &&
+        !device.enabled && (
+          <div className="notification-activation">
+            <Bell size={20} />
+            <span>
+              {t(
+                "Enable alerts on this device so incoming transfers reach you when the app is closed.",
+              )}
+            </span>
+            <button
+              className="button primary"
+              disabled={device.busy}
+              onClick={() => void device.enable()}
+            >
+              {t(device.busy ? "Enabling…" : "Enable device notifications")}
+            </button>
+            {device.error && (
+              <p className="error" role="alert">
+                {t(device.error)}
+              </p>
+            )}
+          </div>
+        )}
       {error && (
         <div className="notification-connection" role="alert">
           <span>{t(error)}</span>
@@ -312,6 +321,115 @@ export function NotificationBanner() {
   );
 }
 
+// Shown over the whole app until this device has notifications on. It cannot
+// be closed: an administrator may skip it for the visit (to reach Settings).
+function RequireNotifications({
+  device,
+}: {
+  device: ReturnType<typeof useDeviceNotifications>;
+}) {
+  const { t, user, locale } = useBuzz();
+  const [skipped, setSkipped] = useState(false);
+  if (skipped) return null;
+  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const installed =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as { standalone?: boolean }).standalone === true;
+  const blocked =
+    typeof Notification !== "undefined" && Notification.permission === "denied";
+  const state = !pushSupported()
+    ? apple && !installed
+      ? "install"
+      : "unsupported"
+    : blocked
+      ? "blocked"
+      : "ask";
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-zinc-900/60 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="require-notifications-title"
+      dir={locale === "fa" ? "rtl" : "ltr"}
+    >
+      <div className="w-full rounded-t-2xl bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-2xl">
+        <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-brand-soft text-brand">
+          <BellRing size={24} />
+        </span>
+        <h2
+          id="require-notifications-title"
+          className="m-0 text-lg font-semibold"
+        >
+          {t("Turn on notifications")}
+        </h2>
+        <p className="mt-2 mb-4 text-sm leading-relaxed text-muted">
+          {t(
+            "Incoming transfers and requests must reach this device even when the app is closed. Turn on notifications to continue.",
+          )}
+        </p>
+        {state === "install" && (
+          <ol className="m-0 mb-4 flex list-decimal flex-col gap-1.5 ps-5 text-sm">
+            <li>{t("Tap the Share button in Safari.")}</li>
+            <li>{t("Choose Add to Home Screen, then Add.")}</li>
+            <li>{t("Open BUZZ from the Home Screen and sign in.")}</li>
+            <li>{t("Tap Turn on notifications and choose Allow.")}</li>
+          </ol>
+        )}
+        {state === "unsupported" && (
+          <p className="m-0 mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {t(
+              "This browser cannot receive notifications. Open BUZZ in Chrome or Edge, or on iPhone and iPad add it to the Home Screen.",
+            )}
+          </p>
+        )}
+        {state === "blocked" && (
+          <ol className="m-0 mb-4 flex list-decimal flex-col gap-1.5 ps-5 text-sm">
+            <li>
+              {t(
+                "Notifications are blocked for this site. Tap the lock or settings icon next to the address.",
+              )}
+            </li>
+            <li>{t("Set Notifications to Allow.")}</li>
+            <li>{t("Come back here and tap Try again.")}</li>
+          </ol>
+        )}
+        {device.error && (
+          <p
+            className="m-0 mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+            role="alert"
+          >
+            {t(device.error)}
+          </p>
+        )}
+        {(state === "ask" || state === "blocked") && (
+          <button
+            type="button"
+            className="button primary w-full"
+            disabled={device.busy}
+            onClick={() => void device.enable()}
+          >
+            {t(
+              device.busy
+                ? "Enabling…"
+                : state === "blocked"
+                  ? "Try again"
+                  : "Turn on notifications",
+            )}
+          </button>
+        )}
+        {user.role === "ADMIN" && (
+          <button
+            type="button"
+            className="mt-3 w-full border-0 bg-transparent text-sm text-muted underline"
+            onClick={() => setSkipped(true)}
+          >
+            {t("Skip on this device for now (administrators only)")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 function PushSettings() {
   const { t, locale } = useBuzz();
   const { inbox, sound, enableSound, device } = useContext(NotificationContext);

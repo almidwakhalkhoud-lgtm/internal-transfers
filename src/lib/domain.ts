@@ -36,6 +36,8 @@ export const requestInput = z
     requesterId: z.string().min(1),
     supplierId: z.string().min(1),
     remarks: z.string().max(2000),
+    // The saved draft this request was written in, removed once it is sent.
+    draftId: z.uuid().optional(),
     lines: z
       .array(
         z.object({
@@ -59,11 +61,28 @@ export const supplyInput = z.object({
   lines: z
     .array(
       z.union([
-        z.object({ supplied: quantity, removed: z.literal(false).optional() }),
+        z.object({
+          supplied: quantity,
+          // The unit the supplier sends in, when it differs from the one asked.
+          unit: z.string().max(100).optional(),
+          removed: z.literal(false).optional(),
+        }),
         z.object({ removed: z.literal(true) }),
       ]),
     )
     .max(500),
+  // Items the supplier adds that were not asked for.
+  added: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        supplied: quantity,
+        unit: z.string().max(100),
+        description: z.string().trim().min(1).max(2000).optional(),
+      }),
+    )
+    .max(500)
+    .default([]),
   remarks: z.string().max(2000).optional(),
 });
 export type RequestLine = {
@@ -75,6 +94,10 @@ export type RequestLine = {
   note?: string;
   supplied?: string;
   removed?: boolean;
+  // The supplier sends this line in another of the product's units.
+  supplyUnit?: string;
+  // The supplier added this line; nothing of it was asked for.
+  added?: boolean;
 };
 export type SnapshotLine = {
   code: string;

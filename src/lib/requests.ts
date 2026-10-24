@@ -22,7 +22,11 @@ const today = () =>
 // Administrators and the people working at a location hear about its requests.
 const notifyLocation = (
   locationId: string,
-  message: { title: string; body: string; url: string },
+  message: (locale: "fa" | "en") => {
+    title: string;
+    body: string;
+    url: string;
+  },
 ) =>
   sendPush(
     {
@@ -92,6 +96,10 @@ export async function createRequest(user: User, input: unknown) {
         lines,
       },
     });
+    if (data.draftId)
+      await tx.requestDraft.deleteMany({
+        where: { id: data.draftId, userId: user.id },
+      });
     await tx.audit.create({
       data: {
         actor: user.id,
@@ -107,11 +115,28 @@ export async function createRequest(user: User, input: unknown) {
     });
     return request;
   });
-  await notifyLocation(created.supplierId, {
-    title: `${created.number} · ${created.requester} → ${created.supplier}`,
-    body: `${created.creatorName} · ${(created.lines as RequestLine[]).length} items`,
-    url: `/requests/${created.id}`,
-  });
+  const count = (created.lines as RequestLine[]).length;
+  await notifyLocation(created.supplierId, (locale) =>
+    locale === "fa"
+      ? {
+          title: `طلبیهٔ جدید ${created.number}`,
+          body: [
+            `${created.requester} از ${created.supplier} درخواست کرده`,
+            `${count} قلم · ${created.creatorName}`,
+            "برای دیدن و پاسخ، روی این پیام بزنید.",
+          ].join("\n"),
+          url: `/requests/${created.id}`,
+        }
+      : {
+          title: `New request ${created.number}`,
+          body: [
+            `${created.requester} asks ${created.supplier}`,
+            `${count} ${count === 1 ? "item" : "items"} · ${created.creatorName}`,
+            "Tap to view and reply.",
+          ].join("\n"),
+          url: `/requests/${created.id}`,
+        },
+  );
   return created;
 }
 export async function findRequest(user: User, id: string) {
@@ -124,24 +149,68 @@ export async function findRequest(user: User, id: string) {
     throw new HttpError(403, "Request access denied");
   return r;
 }
-// The supplier's decisions are matched to the request's lines by position, so
-// a stale page can never apply one line's quantity to another.
-function applySupply(lines: RequestLine[], input: unknown) {
+// The supplier's decisions are matched to the requested lines by position, so
+// a stale page can never apply one line's quantity to another. The supplier
+// may send a line in another of its product's units and may add items; the
+// added items replace any saved before.
+async function applySupply(
+  tx: Prisma.TransactionClient,
+  saved: RequestLine[],
+  input: unknown,
+) {
   const v = supplyInput.parse(input);
-  if (v.lines.length !== lines.length)
+  const asked = saved.filter((l) => !l.added);
+  if (v.lines.length !== asked.length)
     throw new HttpError(409, "The request changed. Refresh and retry.");
-  return {
-    remarks: v.remarks?.trim() ?? "",
-    lines: lines.map((line, i): RequestLine => {
-      const d = v.lines[i];
-      const rest = { ...line };
-      delete rest.supplied;
-      delete rest.removed;
-      return d.removed
-        ? { ...rest, removed: true }
-        : { ...rest, supplied: d.supplied };
-    }),
+  const products = await tx.product.findMany({
+    where: {
+      id: {
+        in: [
+          ...asked.map((l) => l.productId),
+          ...v.added.map((l) => l.productId),
+        ],
+      },
+    },
+  });
+  const unitOf = (productId: string, code: string, unit: string) => {
+    const p = products.find((p) => p.id === productId);
+    if (unit !== "" && !p?.units.includes(unit))
+      throw new HttpError(400, `Invalid unit for ${code}`);
+    return unit;
   };
+  const decided = asked.map((line, i): RequestLine => {
+    const d = v.lines[i];
+    const rest = { ...line };
+    delete rest.supplied;
+    delete rest.removed;
+    delete rest.supplyUnit;
+    if (d.removed) return { ...rest, removed: true };
+    const unit =
+      d.unit === undefined
+        ? line.unit
+        : unitOf(line.productId, line.code, d.unit);
+    return {
+      ...rest,
+      supplied: d.supplied,
+      ...(unit !== line.unit ? { supplyUnit: unit } : {}),
+    };
+  });
+  const added = v.added.map((a): RequestLine => {
+    const p = products.find((p) => p.id === a.productId && p.active);
+    if (!p) throw new HttpError(400, "A product is unavailable");
+    if (a.description && !renamable(p.code))
+      throw new HttpError(400, `The name of ${p.code} cannot be changed`);
+    return {
+      productId: p.id,
+      code: p.code,
+      description: a.description || p.description,
+      quantity: "0",
+      unit: unitOf(p.id, p.code, a.unit),
+      supplied: a.supplied,
+      added: true,
+    };
+  });
+  return { remarks: v.remarks?.trim() ?? "", lines: [...decided, ...added] };
 }
 async function openForSupply(
   tx: Prisma.TransactionClient,
@@ -159,7 +228,7 @@ async function openForSupply(
 export async function saveSupply(user: User, id: string, input: unknown) {
   await db.$transaction(async (tx) => {
     const r = await openForSupply(tx, user, id);
-    const { lines } = applySupply(r.lines as RequestLine[], input);
+    const { lines } = await applySupply(tx, r.lines as RequestLine[], input);
     const result = await tx.stockRequest.updateMany({
       where: { id, status: "OPEN", updatedAt: r.updatedAt },
       data: { lines },
@@ -175,7 +244,11 @@ export async function fulfillRequest(user: User, id: string, input: unknown) {
     const transfer = await db.$transaction(
       async (tx) => {
         const r = await openForSupply(tx, user, id);
-        const { lines, remarks } = applySupply(r.lines as RequestLine[], input);
+        const { lines, remarks } = await applySupply(
+          tx,
+          r.lines as RequestLine[],
+          input,
+        );
         const sending = lines.filter((l) => !l.removed);
         if (!sending.length)
           throw new HttpError(
@@ -197,14 +270,15 @@ export async function fulfillRequest(user: User, id: string, input: unknown) {
         const snapshot: SnapshotLine[] = sending.map((line) => {
           const p = products.find((p) => p.id === line.productId);
           if (!p) throw new HttpError(400, "A product is unavailable");
-          if (line.unit !== "" && !p.units.includes(line.unit))
+          const unit = line.supplyUnit ?? line.unit;
+          if (unit !== "" && !p.units.includes(unit))
             throw new HttpError(400, `Invalid unit for ${p.code}`);
           return {
             code: p.code,
             description: renamable(p.code) ? line.description : p.description,
             barcodes: p.barcodes.map((b) => b.value),
             quantity: line.supplied ?? line.quantity,
-            unit: line.unit,
+            unit,
             ...(line.note ? { note: line.note } : {}),
           };
         });
@@ -244,7 +318,8 @@ export async function fulfillRequest(user: User, id: string, input: unknown) {
               number: r.number,
               transfer: created.number,
               sent: sending.length,
-              unavailable: lines.length - sending.length,
+              unavailable: lines.filter((l) => l.removed).length,
+              added: lines.filter((l) => l.added).length,
             },
           },
         });

@@ -23,20 +23,29 @@ describe("reminder timing and limits", () => {
     ).toBe(false);
   });
   it("waits the full configured interval since the last successful reminder", () => {
+    const fiveMinutes = { intervalMinutes: 5, maxReminders: null };
     expect(
-      reminderDue(
-        DEFAULT_NOTIFICATION_POLICY,
-        { successes: 1, lastSuccessAt: 100 },
-        300099,
-      ),
+      reminderDue(fiveMinutes, { successes: 1, lastSuccessAt: 100 }, 300099),
     ).toBe(false);
     expect(
+      reminderDue(fiveMinutes, { successes: 1, lastSuccessAt: 100 }, 300100),
+    ).toBe(true);
+  });
+  it("defaults to the first alert and two reminders six hours apart", () => {
+    expect(DEFAULT_NOTIFICATION_POLICY).toEqual({
+      intervalMinutes: 360,
+      maxReminders: 2,
+    });
+    const sixHours = 6 * 3600_000;
+    const due = (successes: number, last: number, now: number) =>
       reminderDue(
         DEFAULT_NOTIFICATION_POLICY,
-        { successes: 1, lastSuccessAt: 100 },
-        300100,
-      ),
-    ).toBe(true);
+        { successes, lastSuccessAt: last },
+        now,
+      );
+    expect(due(1, 0, sixHours - 1)).toBe(false);
+    expect(due(1, 0, sixHours)).toBe(true);
+    expect(due(3, 0, 10 * sixHours)).toBe(false);
   });
   it("counts reminders after the first alert and allows increasing the limit", () => {
     const previous = { successes: 4, lastSuccessAt: 0 };

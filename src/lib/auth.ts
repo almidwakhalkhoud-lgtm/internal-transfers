@@ -11,6 +11,24 @@ export class HttpError extends Error {
 }
 export const hash = (value: string | Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
+// A session lasts 30 days and renews while the app is used, so a shop tablet
+// stays signed in through calls and reloads. It ends after 30 idle days, on
+// sign-out, or when an administrator changes the user's code or access.
+const SESSION_DAYS = 30;
+const sessionMs = SESSION_DAYS * 24 * 3600_000;
+async function setSessionCookie(token: string) {
+  // Lax, not strict: a page opened from a link in another app (WhatsApp, a
+  // bookmark) keeps that origin on every reload, and a strict cookie would be
+  // withheld each time. Writes are guarded by sameOrigin() instead.
+  (await cookies()).set("buzz-session", token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure:
+      !!process.env.VERCEL || process.env.APP_ORIGIN?.startsWith("https:"),
+    path: "/",
+    maxAge: sessionMs / 1000,
+  });
+}
 export async function currentUser() {
   const token = (await cookies()).get("buzz-session")?.value;
   if (!token) return null;
@@ -22,6 +40,17 @@ export async function currentUser() {
   });
   if (!session || session.expires < new Date() || !session.user.active)
     return null;
+  // Renew at most once a day: extend the database expiry and the cookie.
+  if (session.expires.getTime() - Date.now() < sessionMs - 24 * 3600_000) {
+    await db.session
+      .updateMany({
+        where: { id: session.id },
+        data: { expires: new Date(Date.now() + sessionMs) },
+      })
+      .catch(() => {});
+    // Pages cannot set cookies while rendering; API requests renew it.
+    await setSessionCookie(token).catch(() => {});
+  }
   return session.user;
 }
 export async function requireUser(admin = false) {
@@ -69,21 +98,11 @@ export async function createSession(
       data: {
         id: hash(token),
         userId,
-        expires: new Date(Date.now() + 8 * 3600000),
+        expires: new Date(Date.now() + sessionMs),
       },
     });
   });
-  // Lax, not strict: a page opened from a link in another app (WhatsApp, a
-  // bookmark) keeps that origin on every reload, and a strict cookie would be
-  // withheld each time. Writes are guarded by sameOrigin() instead.
-  (await cookies()).set("buzz-session", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure:
-      !!process.env.VERCEL || process.env.APP_ORIGIN?.startsWith("https:"),
-    path: "/",
-    maxAge: 8 * 3600,
-  });
+  await setSessionCookie(token);
 }
 // Where a request came from, for the audit log: address, rough place (Vercel
 // adds the city and country headers) and the device and browser it used.

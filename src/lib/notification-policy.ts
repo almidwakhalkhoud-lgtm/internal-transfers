@@ -2,10 +2,13 @@ export type NotificationPolicy = {
   intervalMinutes: number;
   // Reminders after the initial successful delivery; null continues until acknowledgment.
   maxReminders: number | null;
+  // Every device must turn notifications on before the app can be used.
+  requireDevice?: boolean;
 };
+// The first alert, then at most two reminders six hours apart.
 export const DEFAULT_NOTIFICATION_POLICY: NotificationPolicy = {
-  intervalMinutes: 5,
-  maxReminders: null,
+  intervalMinutes: 360,
+  maxReminders: 2,
 };
 
 export function reminderSummary(policy: NotificationPolicy, locale: string) {
