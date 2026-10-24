@@ -52,7 +52,7 @@ const reviewGrid =
   "m-0 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm";
 const reviewValue = "m-0 text-end font-semibold";
 const modalActions = "mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end";
-import { api, downloadBlob } from "@/lib/client";
+import { api, downloadBlob, isMobileDevice, sharePdf } from "@/lib/client";
 import { quantity, totalQuantity, formatTotal, renamable } from "@/lib/domain";
 export type Product = {
   updatedAt: string;
@@ -1238,15 +1238,26 @@ export function SuccessActions({
         )}
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-1">
-        <a
+        {/* A computer opens the PDF to print; a phone hands it to the share
+            sheet, where Print is, since a Home Screen app cannot print a
+            PDF it opens. */}
+        <button
+          type="button"
           className={cx(linkButton, "gap-1.5")}
-          href={`${url}?inline=1`}
-          target="_blank"
-          rel="noopener noreferrer"
+          disabled={!file || busy}
+          onClick={() =>
+            isMobileDevice()
+              ? file &&
+                sharePdf(file).catch((e) => {
+                  if ((e as Error).name !== "AbortError")
+                    downloadBlob(file, file.name);
+                })
+              : window.open(`${url}?inline=1`, "_blank", "noopener")
+          }
         >
           <FileText size={15} />
           {t("Preview / Print")}
-        </a>
+        </button>
         {onAnother ? (
           <button
             type="button"

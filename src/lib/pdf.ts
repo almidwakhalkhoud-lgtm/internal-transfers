@@ -89,7 +89,7 @@ export async function documentHtml(t: DocumentData) {
             backgroundcolor: "FFFFFF",
           })
         : null;
-      return `<tr><td>${esc(l.code)}${barcode ? `<img class="barcode" alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td><div dir="auto">${esc(l.description)}</div>${code ? `<div>${esc(code)}</div>` : ""}${l.note ? `<div class="note" dir="auto">${esc(l.note)}</div>` : ""}</td><td class="fit">${esc(l.quantity)}</td><td class="fit" dir="auto">${esc(l.unit)}</td></tr>`;
+      return `<tr><td>${esc(l.code)}${barcode ? `<img class="barcode" alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td><div dir="auto">${esc(l.description)}</div>${code ? `<div>${esc(code)}</div>` : ""}</td><td class="fit">${esc(l.quantity)}</td><td class="fit" dir="auto">${esc(l.unit)}</td></tr>`;
     }),
   );
   const signature = (side: string, label: string) => {
@@ -119,7 +119,6 @@ td{padding:1.6pt 3pt;border-left:.72pt solid #000;border-right:.72pt solid #000;
 tr{break-inside:avoid}
 td.fit{white-space:nowrap;overflow:hidden;overflow-wrap:normal}
 .barcode{display:block;height:21pt;width:auto;max-width:100%;margin:1pt 0 0 4pt}
-.note{font-style:italic}
 tr.fill td{padding:0}
 .total{text-align:right;padding:2pt 2.4pt 0;height:16pt}
 .sign{position:relative;height:20pt;break-inside:avoid}
@@ -255,9 +254,9 @@ export type OrderFormData = {
   }[];
 };
 // An open request as the shops' paper ORDER FORM (A4): what was ordered on
-// the left; SOURCE STOCK and SOURCE DISCRIPTION blank for the source to fill
-// in by hand. At least the form's 30 numbered rows; longer lists continue on
-// the next page under the repeated headings.
+// the left; SOURCE STOCK blank for the source to fill in by hand, and the
+// item's note (if any) in SOURCE DISCRIPTION. At least the form's 30 numbered
+// rows; longer lists continue on the next page under the repeated headings.
 export async function orderFormHtml(r: OrderFormData) {
   const [yekan, arimo] = await Promise.all(
     ["YekanBakh-Regular.woff2", "Arimo-Regular.woff2"].map((name) =>
@@ -270,7 +269,7 @@ export async function orderFormHtml(r: OrderFormData) {
   const rows = [
     ...r.lines.map(
       (l, i) =>
-        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}${l.note ? `<span class="note" dir="auto">${esc(l.note)}</span>` : ""}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td></td><td></td><td></td></tr>`,
+        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td></td><td></td><td class="note" dir="auto">${l.note ? esc(l.note) : ""}</td></tr>`,
     ),
     ...Array.from(
       { length: Math.max(30 - r.lines.length, 0) },
@@ -290,7 +289,7 @@ thead{display:table-header-group}tr{break-inside:avoid}
 .c{text-align:center}.nw,.unit{white-space:nowrap;overflow:hidden}.unit{font-size:8.5pt}
 .head td{height:23.45pt}.head span{display:inline-block;margin-right:16px;white-space:nowrap}
 .head b{font-weight:normal;border-bottom:1px solid #000;padding:0 4px}
-.note{display:block;font-size:8pt;color:#333}
+.note{font-size:8pt}
 p{margin:8px 0 0}
 </style></head><body><table><colgroup><col style="width:5.2%"><col style="width:9.1%"><col style="width:25%"><col style="width:9.1%"><col style="width:9.1%"><col style="width:7.6%"><col style="width:9.1%"><col style="width:25.8%"></colgroup><thead><tr class="head"><td colspan="8"><span>Transfer Order By <b dir="auto">${esc(r.creatorName)}</b></span><span>From <b dir="auto">${esc(r.supplier)}</b></span><span>To <b dir="auto">${esc(r.requester)}</b></span><span>Date : ${y} / ${m} / ${d}</span><span>No. <b>${esc(r.number)}</b></span></td></tr><tr><th colspan="5" class="c">ORDER FORM</th><th colspan="2">SOURCE STOCK</th><th rowspan="2" class="c">SOURCE<br>DISCRIPTION</th></tr><tr><th class="c nw">NO.</th><th>CODE</th><th class="c">NAME</th><th>QTY</th><th>UNIT</th><th>QTY</th><th>UNIT</th></tr></thead><tbody>${rows.join("")}</tbody></table>${r.remarks ? `<p dir="auto">Remarks: ${esc(r.remarks)}</p>` : ""}</body></html>`;
 }

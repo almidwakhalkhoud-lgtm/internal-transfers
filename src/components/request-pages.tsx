@@ -44,7 +44,7 @@ import {
   useLines,
 } from "./transfer-form";
 import { Empty, LoadError, Pagination, useLoad } from "./data-pages";
-import { api } from "@/lib/client";
+import { api, downloadBlob, isMobileDevice, sharePdf } from "@/lib/client";
 import {
   quantity,
   renamable,
@@ -650,6 +650,54 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
     </>
   );
 }
+// Prints an open request's order form. A computer opens the PDF in a tab to
+// print; a phone fetches it and hands it to the share sheet (Print, Files,
+// WhatsApp), since a Home Screen app on iPhone cannot print a PDF it opens.
+function OrderFormPrint({ id, number }: { id: string; number: string }) {
+  const { t, toast } = useBuzz();
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const url = `/api/requests/${id}/form`;
+  async function print() {
+    if (!isMobileDevice()) {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+    let pdf = file;
+    if (!pdf) {
+      setBusy(true);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error((await res.json()).error);
+        pdf = new File([await res.blob()], `${number}.pdf`, {
+          type: "application/pdf",
+        });
+        setFile(pdf);
+      } catch (e) {
+        toast(t((e as Error).message || "Request failed"));
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    try {
+      await sharePdf(pdf);
+    } catch (e) {
+      const name = (e as Error).name;
+      // Fetching can use up the tap the share sheet needs; the PDF is kept,
+      // so the next tap opens it at once.
+      if (name === "NotAllowedError")
+        toast(t("The PDF is ready. Tap Print again."), "ok");
+      else if (name !== "AbortError") downloadBlob(pdf, pdf.name);
+    }
+  }
+  return (
+    <Button disabled={busy} onClick={print}>
+      <Printer size={16} />
+      {t(busy ? "Preparing PDF…" : "Print")}
+    </Button>
+  );
+}
 // What the supplier has decided for a line, before it is saved.
 type Decision = { supplied: string; removed: boolean; unit: string };
 // An item the supplier adds that was not asked for.
@@ -823,15 +871,7 @@ export function RequestDetail({ id }: { id: string }) {
             {/* An open request prints as the order form (a PDF, so it
                 prints on iPhone too); a fulfilled one as its transfer PDF. */}
             {data?.status === "OPEN" && (
-              <a
-                href={`/api/requests/${id}/form`}
-                target="_blank"
-                rel="noopener"
-                className={buttonStyles.secondary}
-              >
-                <Printer size={16} />
-                {t("Print")}
-              </a>
+              <OrderFormPrint id={id} number={data.number} />
             )}
             <Link href="/requests" className={buttonStyles.secondary}>
               <ArrowRight size={16} className="ltr:rotate-180" />

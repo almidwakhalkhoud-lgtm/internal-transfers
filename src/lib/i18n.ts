@@ -677,6 +677,7 @@ export const fa: Record<string, string> = {
   "Come back here and tap Try again.":
     "به اینجا برگردید و «دوباره امتحان کنید» را بزنید.",
   "Try again": "دوباره امتحان کنید",
+  "The PDF is ready. Tap Print again.": "PDF آماده است. دوباره «چاپ» را بزنید.",
   "Not now (ask again tomorrow)": "فعلاً نه (فردا دوباره بپرس)",
   "Require notifications on every device":
     "روشن بودن اعلان روی همهٔ دستگاه\u200cها اجباری باشد",

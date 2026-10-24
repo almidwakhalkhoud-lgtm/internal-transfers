@@ -3,6 +3,7 @@ import {
   expect,
   type Page,
   type APIRequestContext,
+  devices,
 } from "@playwright/test";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -1961,7 +1962,12 @@ test("a request prints as the order form and the asked location sees one way to 
       remarks: "AUTOMATED TEST ONLY",
       lines: [
         { productId: withUnit.id, quantity: "10", unit: withUnit.units[1] },
-        { productId: noUnit.id, quantity: "5", unit: "" },
+        {
+          productId: noUnit.id,
+          quantity: "5",
+          unit: "",
+          note: "Two apple 50 kg, mint 50 kg",
+        },
       ],
     })
   ).json();
@@ -1990,15 +1996,45 @@ test("a request prints as the order form and the asked location sees one way to 
   await expect(
     supplier.getByRole("button", { name: "Cancel request" }),
   ).toHaveCount(0);
-  // The order form is a PDF, so it prints the same on iPhone, tablets and
-  // computers. The supplier's page links to it on a phone-sized screen.
-  await supplier.setViewportSize({ width: 390, height: 844 });
+  // The order form is a PDF. A computer opens it in a new tab to print.
   await supplier.goto(`/requests/${request.id}`);
-  const print = supplier.getByRole("link", { name: "Print" });
-  await expect(print).toHaveAttribute(
-    "href",
-    `/api/requests/${request.id}/form`,
+  // Headless Chrome has no PDF viewer, so check the new tab asks for it.
+  const asked = supplierContext.waitForEvent("request", (r) =>
+    r.url().endsWith(`/api/requests/${request.id}/form`),
   );
+  await supplier.getByRole("button", { name: "Print", exact: true }).click();
+  await asked;
+  // A phone hands the PDF file to its share sheet, where Print is: an app
+  // added to an iPhone's Home Screen cannot print a PDF it opens.
+  const phone = await browser.newContext({ ...devices["iPhone 13"] });
+  await phone.addInitScript(() => {
+    const w = window as unknown as { shared: object[] };
+    w.shared = [];
+    navigator.canShare = () => true;
+    navigator.share = async (data?: ShareData) => {
+      const f = data!.files![0];
+      w.shared.push({ name: f.name, type: f.type, size: f.size });
+    };
+  });
+  const iphone = await phone.newPage();
+  await login(iphone, "outside@buzz.test");
+  await iphone.goto(`/requests/${request.id}`);
+  await iphone.getByRole("button", { name: "Print", exact: true }).click();
+  await expect
+    .poll(() =>
+      iphone.evaluate(() => (window as unknown as { shared: object[] }).shared),
+    )
+    .toEqual([
+      expect.objectContaining({
+        name: `${request.number}.pdf`,
+        type: "application/pdf",
+      }),
+    ]);
+  await iphone.screenshot({
+    path: "output/qa/request-iphone.png",
+    fullPage: true,
+  });
+  await phone.close();
   const form = await supplier.request.get(`/api/requests/${request.id}/form`);
   expect(form.ok()).toBe(true);
   expect(form.headers()["content-type"]).toBe("application/pdf");
@@ -2006,11 +2042,6 @@ test("a request prints as the order form and the asked location sees one way to 
   expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
   mkdirSync("output/qa", { recursive: true });
   writeFileSync("output/qa/request-order-form.pdf", pdf);
-  await supplier.screenshot({
-    path: "output/qa/request-mobile.png",
-    fullPage: true,
-  });
-  await supplier.setViewportSize({ width: 1440, height: 1000 });
   // The person who asked still cancels their own request.
   await page.goto(`/requests/${request.id}`);
   await expect(
@@ -2032,7 +2063,9 @@ test("a request prints as the order form and the asked location sees one way to 
     supplier.getByText("Transfer Confirmed Successfully"),
   ).toBeVisible({ timeout: 60000 });
   await supplier.reload();
-  await expect(supplier.getByRole("link", { name: "Print" })).toHaveCount(0);
+  await expect(
+    supplier.getByRole("button", { name: "Print", exact: true }),
+  ).toHaveCount(0);
   expect(
     (await supplier.request.get(`/api/requests/${request.id}/form`)).status(),
   ).toBe(409);

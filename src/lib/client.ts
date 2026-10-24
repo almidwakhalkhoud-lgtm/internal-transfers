@@ -22,3 +22,24 @@ export function downloadBlob(blob: Blob, name: string) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+// Phones and tablets, including iPads that report themselves as a Mac.
+export function isMobileDevice() {
+  const ua = navigator.userAgent;
+  return (
+    /iPhone|iPad|iPod|Android/i.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
+}
+// On a phone a PDF goes to the share sheet (Print, Files, WhatsApp): an app
+// added to an iPhone's Home Screen opens a PDF link with no toolbar, so it
+// could not be printed or even closed. Without file sharing it downloads.
+export async function sharePdf(file: File) {
+  let canShare = false;
+  try {
+    canShare = !!navigator.share && !!navigator.canShare?.({ files: [file] });
+  } catch {
+    canShare = false;
+  }
+  if (canShare) await navigator.share({ files: [file], title: file.name });
+  else downloadBlob(file, file.name);
+}
