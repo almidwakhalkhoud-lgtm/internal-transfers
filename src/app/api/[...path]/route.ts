@@ -1691,7 +1691,7 @@ async function handle(
       });
     }
     if (path === "catalog/import" && method === "POST") {
-      const { rows, source } = z
+      const { rows, source, fields } = z
         .object({
           rows: z
             .array(
@@ -1703,8 +1703,13 @@ async function handle(
               }),
             )
             .min(1)
-            .max(30000),
+            .max(2000),
           source: z.enum(["ITEMS.xls", "mehdiali.om export"]),
+          // Columns the file did not supply are not compared, so a sheet
+          // without units never reports every product with units as changed.
+          fields: z
+            .object({ barcodes: z.boolean(), units: z.boolean() })
+            .default({ barcodes: true, units: true }),
         })
         .parse(await req.json());
       const errors = validateCatalog(rows);
@@ -1712,61 +1717,112 @@ async function handle(
         throw new HttpError(400, errors.slice(0, 10).join("; "));
       let imported = 0,
         conflicts = 0;
+      // A few bulk queries per batch instead of several per row: row by row,
+      // a 3,000-row file ran past the server's time limit.
       await db.$transaction(
         async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(8001)`;
+          const keys = [
+            ...new Set(rows.flatMap((r) => [r.code, ...r.barcodes])),
+          ];
+          const known = await tx.product.findMany({
+            where: {
+              OR: [
+                { code: { in: keys } },
+                { barcodes: { some: { value: { in: keys } } } },
+              ],
+            },
+            include: { barcodes: true },
+          });
+          const byCode = new Map(known.map((p) => [p.code, p]));
+          const byBarcode = new Map(
+            known.flatMap((p) => p.barcodes.map((b) => [b.value, p] as const)),
+          );
+          // Stored JSON comes back with its keys reordered; compare on a
+          // fixed shape so a waiting conflict is recognised.
+          const proposal = (p: {
+            code: string;
+            description: string;
+            barcodes: string[];
+            units: string[];
+          }) =>
+            JSON.stringify([
+              p.code,
+              p.description,
+              [...p.barcodes].sort(),
+              [...p.units].sort(),
+            ]);
+          const waiting = new Set(
+            (
+              await tx.catalogConflict.findMany({
+                where: {
+                  resolved: false,
+                  code: { in: rows.map((r) => r.code) },
+                },
+                select: { proposed: true },
+              })
+            ).map((c) =>
+              proposal(c.proposed as Parameters<typeof proposal>[0]),
+            ),
+          );
+          const sorted = (values: string[]) =>
+            JSON.stringify([...values].sort());
+          const fresh: typeof rows = [];
+          const raised: Prisma.CatalogConflictCreateManyInput[] = [];
           for (const row of rows) {
-            const existing = await tx.product.findUnique({
-              where: { code: row.code },
-              include: { barcodes: true },
-            });
-            const collision = await tx.product.findFirst({
-              where: {
-                OR: [
-                  { code: { in: row.barcodes } },
-                  {
-                    barcodes: {
-                      some: { value: { in: [row.code, ...row.barcodes] } },
-                    },
-                  },
-                ],
-                NOT: { code: row.code },
-              },
-              include: { barcodes: true },
-            });
-            if (existing || collision) {
-              const old = existing ?? collision!;
-              const same =
-                old.code === row.code &&
-                old.description === row.description &&
-                JSON.stringify([...old.units].sort()) ===
-                  JSON.stringify([...row.units].sort()) &&
-                JSON.stringify(old.barcodes.map((b) => b.value).sort()) ===
-                  JSON.stringify([...row.barcodes].sort());
-              if (!same) {
-                await tx.catalogConflict.create({
-                  data: {
-                    code: row.code,
-                    existing: JSON.parse(JSON.stringify(old)),
-                    proposed: row,
-                    source,
-                  },
-                });
-                conflicts++;
-              }
+            const old =
+              byCode.get(row.code) ??
+              [row.code, ...row.barcodes]
+                .map(
+                  (v) =>
+                    byBarcode.get(v) ??
+                    (v !== row.code ? byCode.get(v) : undefined),
+                )
+                .find((p) => p && p.code !== row.code);
+            if (!old) {
+              fresh.push(row);
               continue;
             }
-            await tx.product.create({
-              data: {
-                code: row.code,
-                description: row.description,
-                units: row.units,
-                source,
-                barcodes: { create: row.barcodes.map((value) => ({ value })) },
-              },
+            const same =
+              old.code === row.code &&
+              old.description === row.description &&
+              (!fields.units || sorted(old.units) === sorted(row.units)) &&
+              (!fields.barcodes ||
+                sorted(old.barcodes.map((b) => b.value)) ===
+                  sorted(row.barcodes));
+            // A conflict already waiting for review is not raised again.
+            if (same || waiting.has(proposal(row))) continue;
+            raised.push({
+              code: row.code,
+              existing: JSON.parse(JSON.stringify(old)),
+              proposed: row,
+              source,
             });
-            imported++;
           }
+          if (fresh.length) {
+            const created = await tx.product.createManyAndReturn({
+              data: fresh.map((r) => ({
+                code: r.code,
+                description: r.description,
+                units: r.units,
+                source,
+              })),
+              select: { id: true, code: true },
+            });
+            const ids = new Map(created.map((p) => [p.code, p.id]));
+            const barcodes = fresh.flatMap((r) =>
+              r.barcodes.map((value) => ({
+                value,
+                productId: ids.get(r.code)!,
+              })),
+            );
+            if (barcodes.length)
+              await tx.barcode.createMany({ data: barcodes });
+            imported = created.length;
+          }
+          if (raised.length)
+            conflicts = (await tx.catalogConflict.createMany({ data: raised }))
+              .count;
           await tx.audit.create({
             data: {
               actor: user.id,
@@ -1777,7 +1833,7 @@ async function handle(
           });
         },
         {
-          timeout: 120000,
+          timeout: 50000,
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         },
       );

@@ -1355,6 +1355,7 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const cells = sheets[sheet] ?? [];
   return (
     <Modal title="Catalog import" onClose={onClose}>
@@ -1548,24 +1549,49 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
               disabled={!!errors.length || !rows.length || busy}
               onClick={async () => {
                 setBusy(true);
+                setProgress(0);
+                // Batches of 500 keep each request well inside the server's
+                // time limit; a repeated batch is harmless, as existing
+                // products and waiting conflicts are not added again.
+                let imported = 0,
+                  conflicts = 0,
+                  done = 0;
                 try {
-                  const result = await api<{
-                    imported: number;
-                    conflicts: number;
-                  }>("catalog/import", { rows, source });
+                  for (let i = 0; i < rows.length; i += 500) {
+                    const batch = rows.slice(i, i + 500);
+                    const result = await api<{
+                      imported: number;
+                      conflicts: number;
+                    }>("catalog/import", {
+                      rows: batch,
+                      source,
+                      fields: {
+                        barcodes: map.barcodes !== "",
+                        units: map.units !== "",
+                      },
+                    });
+                    imported += result.imported;
+                    conflicts += result.conflicts;
+                    done += batch.length;
+                    setProgress(done);
+                  }
                   setMessage(
-                    `${t("Import complete")}: ${result.imported} · ${t("Conflicts")}: ${result.conflicts}${skipped.length ? ` · ${t("rows skipped")}: ${skipped.length}` : ""}`,
+                    `${t("Import complete")}: ${imported} · ${t("Conflicts")}: ${conflicts}${skipped.length ? ` · ${t("rows skipped")}: ${skipped.length}` : ""}`,
                   );
                   setSkipped([]);
                   setRows(null);
                 } catch (e) {
-                  setErrors([(e as Error).message]);
+                  setErrors([
+                    `${t((e as Error).message)}${done ? ` · ${t("Imported before the error")}: ${done} / ${rows.length}` : ""}`,
+                  ]);
                 } finally {
                   setBusy(false);
                 }
               }}
             >
-              {t(busy ? "Please wait…" : "Import validated rows")}
+              {busy
+                ? `${t("Importing…")} ${progress.toLocaleString()} / ${rows.length.toLocaleString()}`
+                : t("Import validated rows")}
             </Button>
           </>
         )}

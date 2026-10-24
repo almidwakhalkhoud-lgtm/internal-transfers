@@ -10,9 +10,21 @@ export async function api<T = unknown>(
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
-  const result = await res.json();
+  // A host error page (a timeout, an outage) is text, not JSON; report it
+  // plainly instead of a JSON parse error.
+  const text = await res.text();
+  let result: { error?: string };
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error(
+      res.status === 504 || /timeout/i.test(text)
+        ? "The server took too long to respond. Please retry."
+        : "The server could not complete the request. Please retry.",
+    );
+  }
   if (!res.ok) throw new Error(result.error ?? "Request failed");
-  return result;
+  return result as T;
 }
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);

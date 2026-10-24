@@ -710,6 +710,12 @@ export const fa: Record<string, string> = {
   "No item code": "کد کالا ندارد",
   "No description": "شرح ندارد",
   "Barcode already used by another item": "بارکد مال کالای دیگری است",
+  "Importing…": "در حال ورود…",
+  "Imported before the error": "واردشده پیش از خطا",
+  "The server took too long to respond. Please retry.":
+    "پاسخ سرور بیش از حد طول کشید. لطفاً دوباره تلاش کنید.",
+  "The server could not complete the request. Please retry.":
+    "سرور نتوانست درخواست را انجام دهد. لطفاً دوباره تلاش کنید.",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

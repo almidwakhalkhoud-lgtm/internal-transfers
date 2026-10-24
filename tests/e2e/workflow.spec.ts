@@ -197,6 +197,9 @@ test("HID scanner Enter and TAB suffixes, leading zeros, unknown identifiers and
 }) => {
   await login(page);
   await page.goto("/new-transfer");
+  // A scanner types in milliseconds; wait until the page is live, or the
+  // first characters land before it is ready and are lost.
+  await page.waitForLoadState("networkidle");
   const code1 = page.getByLabel("Code / Barcode 1", { exact: true });
   await code1.pressSequentially("0012300119139", { delay: 1 });
   await code1.press("Enter");
@@ -2074,4 +2077,58 @@ test("a request prints as the order form and the asked location sees one way to 
     (await supplier.request.get(`/api/requests/${request.id}/form`)).status(),
   ).toBe(409);
   await supplierContext.close();
+});
+test("a full workbook imports in batches, quickly, and importing it again adds nothing twice", async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  const before = (await db.product.findMany({ select: { id: true } })).map(
+    (p) => p.id,
+  );
+  const conflictsBefore = await db.catalogConflict.count();
+  await login(page, "admin@buzz.test");
+  const importOnce = async () => {
+    await page.goto("/products");
+    await page
+      .getByRole("button", { name: "Import catalog", exact: true })
+      .click();
+    const modal = page.getByRole("dialog", { name: "Catalog import" });
+    await modal.getByLabel("Choose workbook").setInputFiles("ITEMS.xls");
+    await modal
+      .getByRole("button", { name: "Preview import", exact: true })
+      .click();
+    await modal
+      .getByRole("button", { name: "Import validated rows", exact: true })
+      .click();
+    await expect(modal.getByText(/^Import complete/)).toBeVisible({
+      timeout: 120000,
+    });
+    const text = (await modal.getByText(/^Import complete/).textContent())!;
+    await modal.getByRole("button", { name: "Cancel", exact: true }).click();
+    return text;
+  };
+  try {
+    const started = Date.now();
+    const first = await importOnce();
+    expect(Date.now() - started).toBeLessThan(90000);
+    const added = (await db.product.count()) - before.length;
+    expect(added).toBeGreaterThan(3000);
+    expect(first).toContain(`Import complete: ${added}`);
+    // The sheet has no unit column, so products with units are not reported
+    // as changed; and the second run adds no products and no conflicts.
+    const conflicts = await db.catalogConflict.count();
+    const second = await importOnce();
+    expect(second).toContain("Import complete: 0 · Conflicts: 0");
+    expect(await db.catalogConflict.count()).toBe(conflicts);
+  } finally {
+    await db.product.deleteMany({ where: { id: { notIn: before } } });
+    const extra = await db.catalogConflict.findMany({
+      orderBy: { createdAt: "asc" },
+      skip: conflictsBefore,
+      select: { id: true },
+    });
+    await db.catalogConflict.deleteMany({
+      where: { id: { in: extra.map((c) => c.id) } },
+    });
+  }
 });
