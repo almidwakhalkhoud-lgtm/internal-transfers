@@ -54,6 +54,7 @@ import {
   notificationInbox,
   savePushSubscription,
 } from "@/lib/notifications";
+import { orderFormPdf } from "@/lib/pdf";
 import { runNotificationTick } from "@/lib/push-worker";
 import {
   getNotificationPolicy,
@@ -813,7 +814,7 @@ async function handle(
       });
     }
     const requestMatch = path.match(
-      /^requests\/([^/]+)(?:\/(fulfill|cancel|decline))?$/,
+      /^requests\/([^/]+)(?:\/(fulfill|cancel|decline|form))?$/,
     );
     if (requestMatch) {
       const [, id, action] = requestMatch;
@@ -844,6 +845,24 @@ async function handle(
           },
           canSupply: canSupply(user, r),
           canCancel: user.role === "ADMIN" || r.creatorId === user.id,
+        });
+      }
+      // An open request as the paper order form, a PDF so it prints the
+      // same from any phone, tablet or computer.
+      if (action === "form" && method === "GET") {
+        const r = await findRequest(user, id);
+        if (r.status !== "OPEN")
+          throw new HttpError(409, "This request is already closed");
+        const pdf = await orderFormPdf({
+          ...r,
+          lines: (r.lines as RequestLine[]).filter((l) => !l.added),
+        });
+        return new NextResponse(new Uint8Array(pdf), {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `inline; filename="${r.number}.pdf"`,
+            "Cache-Control": "private, no-store",
+          },
         });
       }
       if (!action && method === "PATCH") {

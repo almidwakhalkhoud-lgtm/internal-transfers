@@ -1904,18 +1904,23 @@ test("devices must turn notifications on when an administrator requires it", asy
         name: /^(Turn on notifications|Try again)$/,
       }),
     ).toBeVisible();
-    // Staff cannot skip it; an administrator may, to reach Settings.
-    await expect(prompt.getByRole("button", { name: /Skip/ })).toHaveCount(0);
+    // Anyone may put it off for a day on this device; a reload keeps it away.
+    await prompt
+      .getByRole("button", { name: "Not now (ask again tomorrow)" })
+      .click();
+    await expect(prompt).toHaveCount(0);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.getByRole("dialog", { name: "Turn on notifications" }),
+    ).toHaveCount(0);
+    // A new device (or another person's) still gets asked.
     const adminContext = await browser.newContext();
     const admin = await adminContext.newPage();
     await login(admin, "admin@buzz.test");
-    await admin
-      .getByRole("dialog", { name: "Turn on notifications" })
-      .getByRole("button", { name: /Skip/ })
-      .click();
     await expect(
       admin.getByRole("dialog", { name: "Turn on notifications" }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await adminContext.close();
   } finally {
     await db.notificationSettings.update({
@@ -1985,30 +1990,27 @@ test("a request prints as the order form and the asked location sees one way to 
   await expect(
     supplier.getByRole("button", { name: "Cancel request" }),
   ).toHaveCount(0);
-  await supplier.goto(`/print/requests/${request.id}`);
-  const form = supplier.locator("table");
-  await expect(form.getByText("ORDER FORM")).toBeVisible();
-  await expect(form.getByText("SOURCE STOCK")).toBeVisible();
-  await expect(form.getByText(request.number)).toBeVisible();
-  // Only the requested items, and the source columns blank to fill in by
-  // hand, even though the supplier has saved progress.
-  const filled = form.locator("tbody tr").first();
-  await expect(filled).toContainText(withUnit.code);
-  for (const cell of [5, 6, 7])
-    await expect(filled.locator("td").nth(cell)).toHaveText("");
-  await expect(form.getByText("Not available")).toHaveCount(0);
-  await expect(form.getByText("Added by source")).toHaveCount(0);
-  await expect(form.locator("tbody tr").nth(2).locator("td").nth(1)).toHaveText(
-    "",
+  // The order form is a PDF, so it prints the same on iPhone, tablets and
+  // computers. The supplier's page links to it on a phone-sized screen.
+  await supplier.setViewportSize({ width: 390, height: 844 });
+  await supplier.goto(`/requests/${request.id}`);
+  const print = supplier.getByRole("link", { name: "Print" });
+  await expect(print).toHaveAttribute(
+    "href",
+    `/api/requests/${request.id}/form`,
   );
-  // At least the paper form's 30 numbered rows.
-  await expect(form.locator("tbody tr")).toHaveCount(30);
+  const form = await supplier.request.get(`/api/requests/${request.id}/form`);
+  expect(form.ok()).toBe(true);
+  expect(form.headers()["content-type"]).toBe("application/pdf");
+  const pdf = await form.body();
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
   mkdirSync("output/qa", { recursive: true });
-  await supplier.emulateMedia({ media: "print" });
-  await supplier.pdf({
-    path: "output/qa/request-order-form.pdf",
-    format: "A4",
+  writeFileSync("output/qa/request-order-form.pdf", pdf);
+  await supplier.screenshot({
+    path: "output/qa/request-mobile.png",
+    fullPage: true,
   });
+  await supplier.setViewportSize({ width: 1440, height: 1000 });
   // The person who asked still cancels their own request.
   await page.goto(`/requests/${request.id}`);
   await expect(
@@ -2018,7 +2020,6 @@ test("a request prints as the order form and the asked location sees one way to 
     page.getByRole("button", { name: "Decline request" }),
   ).toHaveCount(0);
   // Once it becomes a transfer, the order form is no longer offered.
-  await supplier.emulateMedia({ media: "screen" });
   await supplier.goto(`/requests/${request.id}`);
   await supplier
     .getByRole("button", { name: "Confirm and create transfer", exact: true })
@@ -2032,7 +2033,8 @@ test("a request prints as the order form and the asked location sees one way to 
   ).toBeVisible({ timeout: 60000 });
   await supplier.reload();
   await expect(supplier.getByRole("link", { name: "Print" })).toHaveCount(0);
-  await supplier.goto(`/print/requests/${request.id}`);
-  await expect(supplier).toHaveURL(new RegExp(`/requests/${request.id}$`));
+  expect(
+    (await supplier.request.get(`/api/requests/${request.id}/form`)).status(),
+  ).toBe(409);
   await supplierContext.close();
 });

@@ -820,11 +820,11 @@ export function RequestDetail({ id }: { id: string }) {
         title="Request details"
         action={
           <div className="flex gap-2">
-            {/* An open request prints as the order form to fill in by
-                hand; a fulfilled one prints as its transfer PDF below. */}
+            {/* An open request prints as the order form (a PDF, so it
+                prints on iPhone too); a fulfilled one as its transfer PDF. */}
             {data?.status === "OPEN" && (
               <a
-                href={`/print/requests/${id}`}
+                href={`/api/requests/${id}/form`}
                 target="_blank"
                 rel="noopener"
                 className={buttonStyles.secondary}
@@ -1295,6 +1295,7 @@ export function RequestDetail({ id }: { id: string }) {
                     </Button>
                     <Button
                       variant="primary"
+                      className="col-span-2 md:col-span-1"
                       disabled={busy}
                       onClick={() => {
                         if (!checked()) return;

@@ -677,8 +677,7 @@ export const fa: Record<string, string> = {
   "Come back here and tap Try again.":
     "به اینجا برگردید و «دوباره امتحان کنید» را بزنید.",
   "Try again": "دوباره امتحان کنید",
-  "Skip on this device for now (administrators only)":
-    "فعلاً روی این دستگاه رد شو (فقط مدیر)",
+  "Not now (ask again tomorrow)": "فعلاً نه (فردا دوباره بپرس)",
   "Require notifications on every device":
     "روشن بودن اعلان روی همهٔ دستگاه\u200cها اجباری باشد",
   "Each signed-in device must turn notifications on before it can use the app.":

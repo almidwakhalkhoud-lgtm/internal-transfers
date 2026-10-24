@@ -322,16 +322,33 @@ export function NotificationBanner() {
   );
 }
 
-// Shown over the whole app until this device has notifications on. It cannot
-// be closed: an administrator may skip it for the visit (to reach Settings).
+// Shown over the whole app until this device has notifications on. Anyone
+// who cannot do it yet (for example an iPhone not added to the Home Screen)
+// may put it off for a day on this device; it then asks again.
+const laterMs = 24 * 3600_000;
 function RequireNotifications({
   device,
 }: {
   device: ReturnType<typeof useDeviceNotifications>;
 }) {
   const { t, user, locale } = useBuzz();
-  const [skipped, setSkipped] = useState(false);
+  const laterKey = `buzz:push-later:${user.id}`;
+  const [skipped, setSkipped] = useState(() => {
+    try {
+      return Date.now() - Number(localStorage.getItem(laterKey)) < laterMs;
+    } catch {
+      return false;
+    }
+  });
   if (skipped) return null;
+  const later = () => {
+    try {
+      localStorage.setItem(laterKey, String(Date.now()));
+    } catch {
+      /* Without storage it only hides for this visit. */
+    }
+    setSkipped(true);
+  };
   const apple = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const installed =
     window.matchMedia("(display-mode: standalone)").matches ||
@@ -418,15 +435,9 @@ function RequireNotifications({
             )}
           </button>
         )}
-        {user.role === "ADMIN" && (
-          <button
-            type="button"
-            className="mt-3 w-full border-0 bg-transparent text-sm text-muted underline"
-            onClick={() => setSkipped(true)}
-          >
-            {t("Skip on this device for now (administrators only)")}
-          </button>
-        )}
+        <button type="button" className="button mt-3 w-full" onClick={later}>
+          {t("Not now (ask again tomorrow)")}
+        </button>
       </div>
     </div>
   );

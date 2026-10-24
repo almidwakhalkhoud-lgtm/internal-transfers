@@ -239,3 +239,75 @@ export async function generatePdf(t: DocumentData) {
     release();
   }
 }
+export type OrderFormData = {
+  number: string;
+  creatorName: string;
+  supplier: string;
+  requester: string;
+  createdAt: Date;
+  remarks: string;
+  lines: {
+    code: string;
+    description: string;
+    quantity: string;
+    unit: string;
+    note?: string;
+  }[];
+};
+// An open request as the shops' paper ORDER FORM (A4): what was ordered on
+// the left; SOURCE STOCK and SOURCE DISCRIPTION blank for the source to fill
+// in by hand. At least the form's 30 numbered rows; longer lists continue on
+// the next page under the repeated headings.
+export async function orderFormHtml(r: OrderFormData) {
+  const [yekan, arimo] = await Promise.all(
+    ["YekanBakh-Regular.woff2", "Arimo-Regular.woff2"].map((name) =>
+      readFile(path.join(process.cwd(), "public/fonts", name)),
+    ),
+  );
+  const [d, m, y] = r.createdAt
+    .toLocaleDateString("en-GB", { timeZone: "Asia/Dubai" })
+    .split("/");
+  const rows = [
+    ...r.lines.map(
+      (l, i) =>
+        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}${l.note ? `<span class="note" dir="auto">${esc(l.note)}</span>` : ""}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td></td><td></td><td></td></tr>`,
+    ),
+    ...Array.from(
+      { length: Math.max(30 - r.lines.length, 0) },
+      (_, k) =>
+        `<tr><td class="c">${r.lines.length + k + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`,
+    ),
+  ];
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Arimo;src:url(data:font/woff2;base64,${arimo.toString("base64")})}
+@font-face{font-family:Yekan;src:url(data:font/woff2;base64,${yekan.toString("base64")})}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:10pt Arimo,Yekan,sans-serif;color:#000}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:left;overflow-wrap:anywhere}
+th{font-weight:normal;height:14.25pt}td{height:21.5pt}
+thead{display:table-header-group}tr{break-inside:avoid}
+.c{text-align:center}.nw,.unit{white-space:nowrap;overflow:hidden}.unit{font-size:8.5pt}
+.head td{height:23.45pt}.head span{display:inline-block;margin-right:16px;white-space:nowrap}
+.head b{font-weight:normal;border-bottom:1px solid #000;padding:0 4px}
+.note{display:block;font-size:8pt;color:#333}
+p{margin:8px 0 0}
+</style></head><body><table><colgroup><col style="width:5.2%"><col style="width:9.1%"><col style="width:25%"><col style="width:9.1%"><col style="width:9.1%"><col style="width:7.6%"><col style="width:9.1%"><col style="width:25.8%"></colgroup><thead><tr class="head"><td colspan="8"><span>Transfer Order By <b dir="auto">${esc(r.creatorName)}</b></span><span>From <b dir="auto">${esc(r.supplier)}</b></span><span>To <b dir="auto">${esc(r.requester)}</b></span><span>Date : ${y} / ${m} / ${d}</span><span>No. <b>${esc(r.number)}</b></span></td></tr><tr><th colspan="5" class="c">ORDER FORM</th><th colspan="2">SOURCE STOCK</th><th rowspan="2" class="c">SOURCE<br>DISCRIPTION</th></tr><tr><th class="c nw">NO.</th><th>CODE</th><th class="c">NAME</th><th>QTY</th><th>UNIT</th><th>QTY</th><th>UNIT</th></tr></thead><tbody>${rows.join("")}</tbody></table>${r.remarks ? `<p dir="auto">Remarks: ${esc(r.remarks)}</p>` : ""}</body></html>`;
+}
+export async function orderFormPdf(r: OrderFormData) {
+  const release = await acquirePdfSlot();
+  let browser: Browser | undefined;
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.setContent(await orderFormHtml(r), { waitUntil: "load" });
+    return await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
+    });
+  } finally {
+    await browser?.close();
+    release();
+  }
+}
