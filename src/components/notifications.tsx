@@ -229,22 +229,156 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// The bell opens a panel right under it with the alerts waiting for this
+// shop, so they can be read and acknowledged without leaving the page.
 export function NotificationBell() {
-  const { t } = useBuzz();
-  const { inbox, error } = useContext(NotificationContext);
+  const { t, locale } = useBuzz();
+  const { inbox, error, refresh } = useContext(NotificationContext);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  const path = usePathname();
+  const [shownPath, setShownPath] = useState(path);
+  if (path !== shownPath) {
+    setShownPath(path);
+    setOpen(false);
+  }
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  const waiting = (inbox?.items ?? []).filter(
+    (n) => !n.acknowledgedAt && !n.closedAt,
+  );
+  const when = (value: string) =>
+    new Date(value).toLocaleString(dateLocale(locale), {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Dubai",
+    });
+  async function acknowledge(id: string) {
+    setBusy(id);
+    setFailed("");
+    try {
+      await api(`notifications/${id}/acknowledge`, {});
+      refresh();
+    } catch (e) {
+      setFailed((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
-    <Link
-      href={notificationUrl}
-      className={`notification-bell ${inbox?.pending ? "has-pending" : ""}`}
-      aria-label={`${t("Notifications")}${inbox ? ` (${inbox.pending})` : ""}`}
-    >
-      <Bell size={20} />
-      {(!!inbox?.pending || error) && (
-        <span className="notification-count">
-          {error ? "!" : inbox!.pending > 99 ? "99+" : inbox!.pending}
-        </span>
+    <div className="relative" ref={box}>
+      <button
+        type="button"
+        className={`notification-bell ${inbox?.pending ? "has-pending" : ""}`}
+        aria-label={`${t("Notifications")}${inbox ? ` (${inbox.pending})` : ""}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => {
+          setOpen(!open);
+          if (!open) refresh();
+        }}
+      >
+        <Bell size={20} />
+        {(!!inbox?.pending || error) && (
+          <span className="notification-count">
+            {error ? "!" : inbox!.pending > 99 ? "99+" : inbox!.pending}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t("Notifications")}
+          className="fixed inset-x-3 top-16 z-50 max-h-[70dvh] overflow-hidden rounded-xl border border-line bg-white text-start shadow-xl sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-2 sm:w-96"
+        >
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <strong className="text-sm">{t("Notifications")}</strong>
+            {!!inbox?.pending && (
+              <span className="rounded-md bg-amber-50 px-1.5 text-xs text-amber-800">
+                {inbox.pending}
+              </span>
+            )}
+          </div>
+          <div className="max-h-[calc(70dvh-6rem)] overflow-y-auto">
+            {(error || failed) && (
+              <p
+                className="m-0 border-b border-line bg-red-50 px-4 py-3 text-sm text-red-700"
+                role="alert"
+              >
+                {t(failed || error)}
+              </p>
+            )}
+            {!waiting.length ? (
+              <p className="m-0 px-4 py-6 text-center text-sm text-subtle">
+                {t("No new notifications")}
+              </p>
+            ) : (
+              <ul className="m-0 list-none p-0">
+                {waiting.slice(0, 10).map((n) => (
+                  <li
+                    key={n.id}
+                    className="flex flex-col gap-2 border-b border-line px-4 py-3 last:border-b-0"
+                  >
+                    <div className="min-w-0">
+                      <strong className="block text-sm leading-snug" dir="auto">
+                        {n.title}
+                      </strong>
+                      <span className="mt-0.5 block text-xs text-muted">
+                        <span dir="auto">{n.transfer.source}</span>
+                        {" → "}
+                        <span dir="auto">{n.transfer.destination}</span>
+                        {" · "}
+                        {when(n.createdAt)}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="button primary min-h-9 px-3 text-xs"
+                        disabled={busy === n.id}
+                        onClick={() => void acknowledge(n.id)}
+                      >
+                        <CheckCheck size={14} />
+                        {t(busy === n.id ? "Please wait…" : "Acknowledge")}
+                      </button>
+                      <Link
+                        className="button min-h-9 px-3 text-xs"
+                        href={`${notificationUrl}&notification=${encodeURIComponent(n.id)}`}
+                      >
+                        {t("View details")}
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Link
+            href={notificationUrl}
+            className="block border-t border-line px-4 py-3 text-center text-sm font-semibold text-brand hover:bg-zinc-50"
+          >
+            {t("All notifications")}
+          </Link>
+        </div>
       )}
-    </Link>
+    </div>
   );
 }
 

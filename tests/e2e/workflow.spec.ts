@@ -2178,3 +2178,43 @@ test("administrators clean up conflicts that need no review", async ({
     1,
   );
 });
+test("the bell opens a panel to read and acknowledge alerts in place", async ({
+  page,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const saved = await (
+    await post(
+      page.request,
+      "transfers",
+      await draft(page.request, [
+        {
+          productId: p.id,
+          version: p.updatedAt.toISOString(),
+          quantity: "1",
+          unit: "",
+        },
+      ]),
+    )
+  ).json();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dashboard");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  const panel = page.getByRole("dialog", { name: "Notifications" });
+  const item = panel.getByRole("listitem").filter({ hasText: saved.number });
+  await expect(item).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  mkdirSync("output/qa", { recursive: true });
+  await page.screenshot({ path: "output/qa/bell-panel-mobile.png" });
+  await item.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(item).toHaveCount(0);
+  const n = await db.transferNotification.findFirstOrThrow({
+    where: { transferId: saved.id },
+  });
+  expect(n.acknowledgedAt).not.toBe(null);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+});

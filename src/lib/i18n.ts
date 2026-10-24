@@ -724,6 +724,9 @@ export const fa: Record<string, string> = {
   "Left to review": "باقی‌مانده برای بررسی",
   "Remove unneeded conflicts": "حذف مغایرت‌های غیرلازم",
   CONFLICTS_CLEANED: "پاک‌سازی مغایرت‌ها",
+  "No new notifications": "اعلان جدیدی نیست",
+  Acknowledge: "مطلع شدم",
+  "View details": "مشاهدهٔ جزئیات",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;
