@@ -13,6 +13,7 @@ import {
   transferInput,
   unitsFromDescription,
   renamable,
+  splitCatalog,
   signableSides,
   signaturePng,
 } from "../../src/lib/domain";
@@ -232,5 +233,42 @@ describe("transfer signatures", () => {
     ).toEqual(png);
     expect(signaturePng("data:image/png;base64,aGVsbG8=")).toBeNull();
     expect(signaturePng("data:image/svg+xml;base64,PHN2Zz4=")).toBeNull();
+  });
+});
+describe("catalog import skips bad rows instead of blocking the file", () => {
+  const row = (
+    row: number,
+    code: string,
+    description = "Item",
+    barcodes: string[] = [],
+  ) => ({
+    row,
+    code,
+    description,
+    barcodes,
+    units: [],
+  });
+  it("keeps the first of a repeated code and skips rows without a code or description", () => {
+    const { valid, skipped } = splitCatalog([
+      row(2, "3309"),
+      row(3, "3310"),
+      row(4, "3310", ""),
+      row(5, "", "No code"),
+      row(6, "3310", "Again"),
+    ]);
+    expect(valid.map((r) => r.code)).toEqual(["3309", "3310"]);
+    expect(skipped).toEqual([
+      { row: 4, code: "3310", reason: "no-description", firstRow: undefined },
+      { row: 5, code: "", reason: "no-code", firstRow: undefined },
+      { row: 6, code: "3310", reason: "duplicate", firstRow: 3 },
+    ]);
+  });
+  it("skips a row whose barcode belongs to another item", () => {
+    const { valid, skipped } = splitCatalog([
+      row(2, "A", "First", ["111"]),
+      row(3, "B", "Second", ["111"]),
+    ]);
+    expect(valid.map((r) => r.code)).toEqual(["A"]);
+    expect(skipped[0]).toMatchObject({ row: 3, reason: "barcode" });
   });
 });

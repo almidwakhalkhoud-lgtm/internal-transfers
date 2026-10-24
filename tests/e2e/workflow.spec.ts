@@ -590,7 +590,7 @@ test("a delayed PDF uses the confirmed employee snapshot after a user-name chang
     await db.user.update({ where: { id: user.id }, data: { name: user.name } });
   }
 });
-test("catalog preview rejects incomplete original rows and imports explicit website units without overwriting conflicts", async ({
+test("catalog preview skips incomplete rows, keeps the rest importable and imports explicit website units without overwriting conflicts", async ({
   page,
 }) => {
   await login(page, "admin@buzz.test");
@@ -603,10 +603,14 @@ test("catalog preview rejects incomplete original rows and imports explicit webs
   await modal
     .getByRole("button", { name: "Preview import", exact: true })
     .click();
+  // One bad row no longer blocks the file: it is listed and skipped.
   await expect(
     modal.getByRole("button", { name: "Import validated rows" }),
-  ).toBeDisabled();
-  await expect(modal.getByRole("alert")).toContainText("3277");
+  ).toBeEnabled();
+  await expect(
+    modal.getByRole("status").filter({ hasText: "These rows are skipped" }),
+  ).toContainText(/3277 · No description/);
+  await expect(modal.getByRole("alert")).toHaveCount(0);
   await modal.getByRole("button", { name: "Cancel", exact: true }).click();
   const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
   const result = await post(page.request, "catalog/import", {

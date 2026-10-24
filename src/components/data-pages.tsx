@@ -49,6 +49,8 @@ import {
 import type { SnapshotLine, CatalogRow } from "@/lib/domain";
 import {
   validateCatalog,
+  splitCatalog,
+  type SkippedRow,
   unitsFromDescription,
   outerUnits,
   numberFor,
@@ -1349,6 +1351,7 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
   });
   const [source, setSource] = useState("ITEMS.xls");
   const [rows, setRows] = useState<CatalogRow[] | null>(null);
+  const [skipped, setSkipped] = useState<SkippedRow[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1454,9 +1457,12 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
             <Button
               onClick={() => {
                 const proposed = cells
+                  // The sheet's own row numbers: the heading is row 1.
+                  .map((r, i) => ({ r, row: i + 1 }))
                   .slice(1)
-                  .filter((r) => r.some(Boolean))
-                  .map((r) => ({
+                  .filter(({ r }) => r.some(Boolean))
+                  .map(({ r, row }) => ({
+                    row,
                     code: r[Number(map.code)]?.trim() ?? "",
                     description: r[Number(map.description)]?.trim() ?? "",
                     barcodes:
@@ -1474,8 +1480,10 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
                             .filter(Boolean)
                         : [],
                   }));
-                setErrors(validateCatalog(proposed));
-                setRows(proposed);
+                const { valid, skipped } = splitCatalog(proposed);
+                setSkipped(skipped);
+                setErrors(validateCatalog(valid));
+                setRows(valid);
               }}
             >
               {t("Preview import")}
@@ -1485,8 +1493,48 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
         {rows && (
           <>
             <p className="m-0 text-sm font-semibold">
-              {rows.length.toLocaleString()} {t("Rows")}
+              {rows.length.toLocaleString()} {t("rows to import")}
+              {skipped.length > 0 &&
+                ` · ${skipped.length.toLocaleString()} ${t("rows skipped")}`}
             </p>
+            {skipped.length > 0 && (
+              <div
+                className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-900"
+                role="status"
+              >
+                <p className="m-0 mb-1 font-semibold">
+                  {t("These rows are skipped; every other row is imported.")}
+                </p>
+                <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+                  {skipped.slice(0, 20).map((s) => (
+                    <li key={`${s.row}-${s.reason}`}>
+                      {t("Row")} {s.row}
+                      {s.code && (
+                        <>
+                          {" "}
+                          · <b dir="ltr">{s.code}</b>
+                        </>
+                      )}{" "}
+                      ·{" "}
+                      {s.reason === "duplicate"
+                        ? `${t("Same code as row")} ${s.firstRow}`
+                        : t(
+                            {
+                              "no-code": "No item code",
+                              "no-description": "No description",
+                              barcode: "Barcode already used by another item",
+                            }[s.reason],
+                          )}
+                    </li>
+                  ))}
+                  {skipped.length > 20 && (
+                    <li>
+                      +{(skipped.length - 20).toLocaleString()} {t("more")}
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
             <div className="flex flex-col gap-1 rounded-xl bg-zinc-50 p-3 text-xs">
               {rows.slice(0, 5).map((r, i) => (
                 <div key={i} className="truncate">
@@ -1497,7 +1545,7 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
             </div>
             <Button
               variant="primary"
-              disabled={!!errors.length || busy}
+              disabled={!!errors.length || !rows.length || busy}
               onClick={async () => {
                 setBusy(true);
                 try {
@@ -1506,8 +1554,9 @@ function CatalogImport({ onClose }: { onClose: () => void }) {
                     conflicts: number;
                   }>("catalog/import", { rows, source });
                   setMessage(
-                    `${t("Import complete")}: ${result.imported} · ${t("Conflicts")}: ${result.conflicts}`,
+                    `${t("Import complete")}: ${result.imported} · ${t("Conflicts")}: ${result.conflicts}${skipped.length ? ` · ${t("rows skipped")}: ${skipped.length}` : ""}`,
                   );
+                  setSkipped([]);
                   setRows(null);
                 } catch (e) {
                   setErrors([(e as Error).message]);

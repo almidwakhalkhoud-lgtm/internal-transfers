@@ -240,6 +240,57 @@ export type CatalogRow = {
   barcodes: string[];
   units: string[];
 };
+// Sorts a spreadsheet into rows to import and rows to skip, so one bad row
+// (no code, no description, a code already used higher up, or a barcode
+// another product has) no longer blocks the rest. `row` is the sheet's row
+// number, as people see it in Excel.
+export type SkippedRow = {
+  row: number;
+  code: string;
+  reason: "no-code" | "no-description" | "duplicate" | "barcode";
+  firstRow?: number;
+};
+export function splitCatalog(rows: (CatalogRow & { row: number })[]) {
+  const valid: CatalogRow[] = [];
+  const skipped: SkippedRow[] = [];
+  const codes = new Map<string, number>();
+  const barcodes = new Map<string, string>();
+  for (const { row, ...r } of rows) {
+    const skip = (reason: SkippedRow["reason"], firstRow?: number) =>
+      skipped.push({ row, code: r.code, reason, firstRow });
+    if (!r.code) skip("no-code");
+    else if (!r.description) skip("no-description");
+    else if (codes.has(r.code)) skip("duplicate", codes.get(r.code));
+    else if (
+      r.barcodes.some(
+        (b) =>
+          (barcodes.has(b) && barcodes.get(b) !== r.code) ||
+          (codes.has(b) && b !== r.code),
+      )
+    )
+      skip("barcode");
+    else {
+      codes.set(r.code, row);
+      for (const b of r.barcodes) barcodes.set(b, r.code);
+      valid.push(r);
+    }
+  }
+  // A code that equals another kept row's barcode is skipped as well.
+  const used = new Set(valid.flatMap((r) => r.barcodes));
+  return {
+    valid: valid.filter((r) => {
+      const clash = used.has(r.code) && !r.barcodes.includes(r.code);
+      if (clash)
+        skipped.push({
+          row: codes.get(r.code)!,
+          code: r.code,
+          reason: "barcode",
+        });
+      return !clash;
+    }),
+    skipped: skipped.sort((a, b) => a.row - b.row),
+  };
+}
 export function validateCatalog(rows: CatalogRow[]) {
   const seen = new Set<string>();
   const barcodes = new Map<string, string>();

@@ -701,6 +701,15 @@ export const fa: Record<string, string> = {
   "Look up each added item by its exact code, or remove it.":
     "هر قلم اضافه\u200cشده را با کد دقیق جست\u200cوجو کنید، یا آن را حذف کنید.",
   "The draft is too large": "پیش\u200cنویس بیش از حد بزرگ است",
+  "rows to import": "ردیف برای ورود",
+  "rows skipped": "ردیف رد شد",
+  "These rows are skipped; every other row is imported.":
+    "این ردیف‌ها وارد نمی‌شوند؛ بقیهٔ ردیف‌ها وارد می‌شوند.",
+  Row: "ردیف",
+  "Same code as row": "کد تکراری، مثل ردیف",
+  "No item code": "کد کالا ندارد",
+  "No description": "شرح ندارد",
+  "Barcode already used by another item": "بارکد مال کالای دیگری است",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;
