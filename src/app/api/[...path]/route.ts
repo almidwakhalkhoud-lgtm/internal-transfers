@@ -25,6 +25,7 @@ import {
   signatureSides,
   sequenceOf,
   validateCatalog,
+  unneededConflicts,
   type CatalogRow,
   type RequestLine,
 } from "@/lib/domain";
@@ -1662,6 +1663,56 @@ async function handle(
           orderBy: { name: "asc" },
         }),
       });
+    }
+    if (path === "catalog/conflicts/cleanup") {
+      const pending = await db.catalogConflict.findMany({
+        where: { resolved: false },
+        select: { id: true, code: true, proposed: true, createdAt: true },
+      });
+      const products = await db.product.findMany({
+        where: { code: { in: [...new Set(pending.map((c) => c.code))] } },
+        include: { barcodes: true },
+      });
+      const { duplicates, unchanged } = unneededConflicts(
+        pending,
+        products.map((p) => ({
+          ...p,
+          barcodes: p.barcodes.map((b) => b.value),
+        })),
+      );
+      const remaining = pending.length - duplicates.length - unchanged.length;
+      if (method === "GET")
+        return NextResponse.json({
+          duplicates: duplicates.length,
+          unchanged: unchanged.length,
+          remaining,
+        });
+      if (method === "POST") {
+        // Marked resolved, not erased, and logged.
+        const ids = [...duplicates, ...unchanged];
+        await db.$transaction(async (tx) => {
+          await tx.catalogConflict.updateMany({
+            where: { id: { in: ids }, resolved: false },
+            data: { resolved: true },
+          });
+          await tx.audit.create({
+            data: {
+              actor: user.id,
+              action: "CONFLICTS_CLEANED",
+              target: "catalog",
+              detail: {
+                duplicates: duplicates.length,
+                unchanged: unchanged.length,
+                remaining,
+              },
+            },
+          });
+        });
+        return NextResponse.json({
+          removed: ids.length,
+          remaining,
+        });
+      }
     }
     if (path === "catalog/conflicts" && method === "GET") {
       const page = Math.max(

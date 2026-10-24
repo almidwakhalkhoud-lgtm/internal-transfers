@@ -2132,3 +2132,49 @@ test("a full workbook imports in batches, quickly, and importing it again adds n
     });
   }
 });
+test("administrators clean up conflicts that need no review", async ({
+  page,
+}) => {
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-unit" },
+    include: { barcodes: true },
+  });
+  const make = (description: string, units: string[], minutes: number) =>
+    db.catalogConflict.create({
+      data: {
+        code: p.code,
+        existing: {},
+        proposed: { code: p.code, description, units, barcodes: [] },
+        source: "ITEMS.xls",
+        createdAt: new Date(Date.now() - minutes * 60_000),
+      },
+    });
+  await db.catalogConflict.updateMany({ data: { resolved: true } });
+  await make("Renamed by a sheet", [], 3);
+  await make("Renamed by a sheet", [], 2);
+  await make(p.description, [], 1);
+  const real = await make(p.description, ["NEW-UNIT"], 0);
+  await login(page);
+  expect(
+    (await page.request.get("/api/catalog/conflicts/cleanup")).status(),
+  ).toBe(403);
+  await login(page, "admin@buzz.test");
+  await page.goto("/products");
+  await page.getByRole("button", { name: "Clean up conflicts" }).click();
+  const modal = page.getByRole("dialog", { name: "Clean up conflicts" });
+  await expect(modal).toContainText("Duplicates1");
+  await expect(modal).toContainText("Already matching the product1");
+  await expect(modal).toContainText("Left to review2");
+  await modal
+    .getByRole("button", { name: "Remove unneeded conflicts" })
+    .click();
+  await expect(modal).toHaveCount(0);
+  const left = await db.catalogConflict.findMany({
+    where: { resolved: false },
+  });
+  expect(left.map((c) => c.id)).toContain(real.id);
+  expect(left).toHaveLength(2);
+  expect(await db.audit.count({ where: { action: "CONFLICTS_CLEANED" } })).toBe(
+    1,
+  );
+});

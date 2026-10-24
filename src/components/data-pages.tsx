@@ -1623,6 +1623,12 @@ function Conflicts() {
     count: number;
   }>(`catalog/conflicts?page=${page}`);
   const [err, setErr] = useState("");
+  const [cleanup, setCleanup] = useState<{
+    duplicates: number;
+    unchanged: number;
+    remaining: number;
+  } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
   return (
     <Card className="mt-4 md:mt-6">
       <div className="flex flex-col gap-1 border-b border-line px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
@@ -1632,10 +1638,77 @@ function Conflicts() {
             {data?.count ?? 0}
           </span>
         </h2>
-        <p className="m-0 text-xs text-subtle md:text-sm">
-          {t("Review source conflicts before applying updates.")}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="m-0 text-xs text-subtle md:text-sm">
+            {t("Review source conflicts before applying updates.")}
+          </p>
+          {!!data?.count && (
+            <Button
+              disabled={cleaning}
+              onClick={async () => {
+                setErr("");
+                try {
+                  setCleanup(await api("catalog/conflicts/cleanup"));
+                } catch (e) {
+                  setErr((e as Error).message);
+                }
+              }}
+            >
+              {t("Clean up conflicts")}
+            </Button>
+          )}
+        </div>
       </div>
+      {cleanup && (
+        <Modal
+          title="Clean up conflicts"
+          onClose={() => !cleaning && setCleanup(null)}
+        >
+          <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
+            {t(
+              "These conflicts need no review: the same proposal waiting more than once, or a proposal that already matches the product. They are marked resolved and the clean-up is logged.",
+            )}
+          </p>
+          <dl className="m-0 mb-4 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+            <dt className="text-subtle">{t("Duplicates")}</dt>
+            <dd className="m-0 text-end font-semibold">
+              {cleanup.duplicates.toLocaleString()}
+            </dd>
+            <dt className="text-subtle">{t("Already matching the product")}</dt>
+            <dd className="m-0 text-end font-semibold">
+              {cleanup.unchanged.toLocaleString()}
+            </dd>
+            <dt className="text-subtle">{t("Left to review")}</dt>
+            <dd className="m-0 text-end font-semibold">
+              {cleanup.remaining.toLocaleString()}
+            </dd>
+          </dl>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+            <Button disabled={cleaning} onClick={() => setCleanup(null)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={cleaning || !(cleanup.duplicates + cleanup.unchanged)}
+              onClick={async () => {
+                setCleaning(true);
+                try {
+                  await api("catalog/conflicts/cleanup", {});
+                  setCleanup(null);
+                  setPage(0);
+                  load();
+                } catch (e) {
+                  setErr((e as Error).message);
+                } finally {
+                  setCleaning(false);
+                }
+              }}
+            >
+              {t(cleaning ? "Please wait…" : "Remove unneeded conflicts")}
+            </Button>
+          </div>
+        </Modal>
+      )}
       <LoadError error={error || err} load={load} />
       {!data?.items.length ? (
         <p className="m-0 px-4 py-4 text-sm text-subtle md:px-6">

@@ -14,6 +14,7 @@ import {
   unitsFromDescription,
   renamable,
   splitCatalog,
+  unneededConflicts,
   signableSides,
   signaturePng,
 } from "../../src/lib/domain";
@@ -270,5 +271,70 @@ describe("catalog import skips bad rows instead of blocking the file", () => {
     ]);
     expect(valid.map((r) => r.code)).toEqual(["A"]);
     expect(skipped[0]).toMatchObject({ row: 3, reason: "barcode" });
+  });
+});
+describe("conflict clean-up keeps only conflicts worth reviewing", () => {
+  const product = {
+    code: "1021",
+    description: "Lighter",
+    units: ["PCS", "CTN"],
+    barcodes: ["111"],
+  };
+  const at = (n: number) => new Date(2026, 9, n);
+  const proposal = (
+    description: string,
+    units: string[] = [],
+    barcodes: string[] = [],
+  ) => ({
+    code: "1021",
+    description,
+    units,
+    barcodes,
+  });
+  it("drops repeats and proposals that match the product, keeps real changes", () => {
+    const result = unneededConflicts(
+      [
+        {
+          id: "old-copy",
+          code: "1021",
+          proposed: proposal("Torch lighter"),
+          createdAt: at(1),
+        },
+        {
+          id: "new-copy",
+          code: "1021",
+          proposed: proposal("Torch lighter"),
+          createdAt: at(2),
+        },
+        // The sheet had no unit or barcode column: nothing really differs.
+        {
+          id: "no-units",
+          code: "1021",
+          proposed: proposal("Lighter"),
+          createdAt: at(3),
+        },
+        {
+          id: "same-units",
+          code: "1021",
+          proposed: proposal("Lighter", ["CTN", "PCS"]),
+          createdAt: at(4),
+        },
+        {
+          id: "new-unit",
+          code: "1021",
+          proposed: proposal("Lighter", ["BOX"]),
+          createdAt: at(5),
+        },
+        {
+          id: "gone",
+          code: "9999",
+          proposed: { ...proposal("X"), code: "9999" },
+          createdAt: at(6),
+        },
+      ],
+      [product],
+    );
+    expect(result.duplicates).toEqual(["old-copy"]);
+    expect(result.unchanged.sort()).toEqual(["no-units", "same-units"]);
   });
 });

@@ -716,6 +716,14 @@ export const fa: Record<string, string> = {
     "پاسخ سرور بیش از حد طول کشید. لطفاً دوباره تلاش کنید.",
   "The server could not complete the request. Please retry.":
     "سرور نتوانست درخواست را انجام دهد. لطفاً دوباره تلاش کنید.",
+  "Clean up conflicts": "پاک‌سازی مغایرت‌ها",
+  "These conflicts need no review: the same proposal waiting more than once, or a proposal that already matches the product. They are marked resolved and the clean-up is logged.":
+    "این مغایرت‌ها نیازی به بررسی ندارند: پیشنهاد تکراری که چند بار ثبت شده، یا پیشنهادی که با کالای فعلی یکی است. این‌ها «بررسی‌شده» علامت می‌خورند و پاک‌سازی در گزارش رویدادها ثبت می‌شود.",
+  Duplicates: "تکراری",
+  "Already matching the product": "با کالای فعلی یکی است",
+  "Left to review": "باقی‌مانده برای بررسی",
+  "Remove unneeded conflicts": "حذف مغایرت‌های غیرلازم",
+  CONFLICTS_CLEANED: "پاک‌سازی مغایرت‌ها",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

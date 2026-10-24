@@ -291,6 +291,52 @@ export function splitCatalog(rows: (CatalogRow & { row: number })[]) {
     skipped: skipped.sort((a, b) => a.row - b.row),
   };
 }
+// Which pending catalog conflicts need no review: the same proposal waiting
+// more than once (the newest is kept), or a proposal that matches the product
+// as it is now. Empty units or barcodes in a proposal mean the file did not
+// supply that column, so they are not a difference. Anything else stays.
+export function unneededConflicts(
+  conflicts: { id: string; code: string; proposed: unknown; createdAt: Date }[],
+  products: {
+    code: string;
+    description: string;
+    units: string[];
+    barcodes: string[];
+  }[],
+) {
+  const set = (values: string[]) => JSON.stringify([...values].sort());
+  const byCode = new Map(products.map((p) => [p.code, p]));
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  const unchanged: string[] = [];
+  const newest = [...conflicts].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+  for (const c of newest) {
+    const p = c.proposed as Partial<CatalogRow>;
+    const key = JSON.stringify([
+      c.code,
+      p.description ?? "",
+      [...(p.units ?? [])].sort(),
+      [...(p.barcodes ?? [])].sort(),
+    ]);
+    if (seen.has(key)) {
+      duplicates.push(c.id);
+      continue;
+    }
+    seen.add(key);
+    const current = byCode.get(c.code);
+    if (
+      current &&
+      (p.code ?? c.code) === current.code &&
+      (p.description ?? "") === current.description &&
+      (!p.units?.length || set(p.units) === set(current.units)) &&
+      (!p.barcodes?.length || set(p.barcodes) === set(current.barcodes))
+    )
+      unchanged.push(c.id);
+  }
+  return { duplicates, unchanged };
+}
 export function validateCatalog(rows: CatalogRow[]) {
   const seen = new Set<string>();
   const barcodes = new Map<string, string>();
