@@ -820,16 +820,19 @@ export function RequestDetail({ id }: { id: string }) {
         title="Request details"
         action={
           <div className="flex gap-2">
-            {/* The order form to print as a picking list. */}
-            <a
-              href={`/print/requests/${id}`}
-              target="_blank"
-              rel="noopener"
-              className={buttonStyles.secondary}
-            >
-              <Printer size={16} />
-              {t("Print")}
-            </a>
+            {/* An open request prints as the order form to fill in by
+                hand; a fulfilled one prints as its transfer PDF below. */}
+            {data?.status === "OPEN" && (
+              <a
+                href={`/print/requests/${id}`}
+                target="_blank"
+                rel="noopener"
+                className={buttonStyles.secondary}
+              >
+                <Printer size={16} />
+                {t("Print")}
+              </a>
+            )}
             <Link href="/requests" className={buttonStyles.secondary}>
               <ArrowRight size={16} className="ltr:rotate-180" />
               {t("Back")}

@@ -1990,8 +1990,17 @@ test("a request prints as the order form and the asked location sees one way to 
   await expect(form.getByText("ORDER FORM")).toBeVisible();
   await expect(form.getByText("SOURCE STOCK")).toBeVisible();
   await expect(form.getByText(request.number)).toBeVisible();
-  await expect(form.getByText("Not available")).toBeVisible();
-  await expect(form.getByText("Added by source")).toBeVisible();
+  // Only the requested items, and the source columns blank to fill in by
+  // hand, even though the supplier has saved progress.
+  const filled = form.locator("tbody tr").first();
+  await expect(filled).toContainText(withUnit.code);
+  for (const cell of [5, 6, 7])
+    await expect(filled.locator("td").nth(cell)).toHaveText("");
+  await expect(form.getByText("Not available")).toHaveCount(0);
+  await expect(form.getByText("Added by source")).toHaveCount(0);
+  await expect(form.locator("tbody tr").nth(2).locator("td").nth(1)).toHaveText(
+    "",
+  );
   // At least the paper form's 30 numbered rows.
   await expect(form.locator("tbody tr")).toHaveCount(30);
   mkdirSync("output/qa", { recursive: true });
@@ -2008,5 +2017,22 @@ test("a request prints as the order form and the asked location sees one way to 
   await expect(
     page.getByRole("button", { name: "Decline request" }),
   ).toHaveCount(0);
+  // Once it becomes a transfer, the order form is no longer offered.
+  await supplier.emulateMedia({ media: "screen" });
+  await supplier.goto(`/requests/${request.id}`);
+  await supplier
+    .getByRole("button", { name: "Confirm and create transfer", exact: true })
+    .click();
+  await supplier
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirm and generate PDF", exact: true })
+    .click();
+  await expect(
+    supplier.getByText("Transfer Confirmed Successfully"),
+  ).toBeVisible({ timeout: 60000 });
+  await supplier.reload();
+  await expect(supplier.getByRole("link", { name: "Print" })).toHaveCount(0);
+  await supplier.goto(`/print/requests/${request.id}`);
+  await expect(supplier).toHaveURL(new RegExp(`/requests/${request.id}$`));
   await supplierContext.close();
 });

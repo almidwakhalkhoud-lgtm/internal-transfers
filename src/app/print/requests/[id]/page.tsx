@@ -5,9 +5,11 @@ import { findRequest } from "@/lib/requests";
 import type { RequestLine } from "@/lib/domain";
 import { PrintButton } from "./print-button";
 export const dynamic = "force-dynamic";
-// The request printed like the shops' paper ORDER FORM: what was ordered on
-// the left, what the source sends (to fill in by hand, or as saved) on the
-// right, with at least the form's 30 numbered rows.
+// An open request printed like the shops' paper ORDER FORM: what was ordered
+// on the left; SOURCE STOCK and SOURCE DISCRIPTION stay blank for the source
+// to fill in by hand before entering it in the app. At least the form's 30
+// numbered rows. Once a request becomes a transfer, the transfer PDF is the
+// document to print instead.
 const ROWS = 30;
 function formDate(value: Date) {
   const [d, m, y] = value
@@ -25,7 +27,8 @@ export default async function Page({
   if (!hasMenu(user, "requests")) redirect(landingPage(user));
   const r = await findRequest(user, (await params).id).catch(() => null);
   if (!r) notFound();
-  const lines = r.lines as RequestLine[];
+  if (r.status !== "OPEN") redirect(`/requests/${r.id}`);
+  const lines = (r.lines as RequestLine[]).filter((l) => !l.added);
   const blanks = Math.max(ROWS - lines.length, 0);
   return (
     <main className="order-form">
@@ -120,22 +123,14 @@ export default async function Page({
                 {l.note && <span className="note">{l.note}</span>}
               </td>
               <td className="l" dir="ltr">
-                {l.added ? "" : l.quantity}
+                {l.quantity}
               </td>
               <td className="l unit" dir="auto">
-                {l.added ? "" : l.unit}
+                {l.unit}
               </td>
-              <td className="l" dir="ltr">
-                {l.removed ? "" : (l.supplied ?? "")}
-              </td>
-              <td className="l unit" dir="auto">
-                {l.removed || l.supplied === undefined
-                  ? ""
-                  : (l.supplyUnit ?? l.unit)}
-              </td>
-              <td className="c">
-                {l.removed ? "Not available" : l.added ? "Added by source" : ""}
-              </td>
+              <td />
+              <td />
+              <td />
             </tr>
           ))}
           {Array.from({ length: blanks }, (_, k) => (
