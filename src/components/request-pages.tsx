@@ -1,4 +1,5 @@
 "use client";
+import { dateLocale } from "@/lib/i18n";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -90,7 +91,7 @@ const reviewGrid =
 const reviewValue = "m-0 text-end font-semibold";
 const modalActions = "mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end";
 const shortDate = (value: string, locale: string) =>
-  new Date(value).toLocaleDateString(locale === "fa" ? "fa-IR" : "en-GB", {
+  new Date(value).toLocaleDateString(dateLocale(locale), {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -395,7 +396,7 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
   const draftLabel = (d: SavedRequestDraft) =>
     `${name(d.data.supplierId) ?? "—"} → ${name(d.data.requesterId) ?? "—"} · ${new Date(
       d.updatedAt,
-    ).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+    ).toLocaleString(dateLocale(locale), {
       day: "2-digit",
       month: "short",
       hour: "2-digit",

@@ -1,4 +1,8 @@
 export type Locale = "en" | "fa";
+// Dates are Gregorian in both languages; Persian only changes the words
+// and digits (۱۸ اکتبر ۲۰۲۶), never the calendar.
+export const dateLocale = (locale: string) =>
+  locale === "fa" ? "fa-IR-u-ca-gregory" : "en-GB";
 export const fa: Record<string, string> = {
   "Reminder frequency and limit": "فاصله و تعداد یادآوری‌ها",
   "Applies to all shops and devices. The initial alert is immediate; these settings control its reminders.":

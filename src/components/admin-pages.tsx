@@ -1,4 +1,5 @@
 "use client";
+import { dateLocale } from "@/lib/i18n";
 import { Dropdown } from "@/components/dropdown";
 import { Form } from "@/components/form";
 import Link from "next/link";
@@ -622,7 +623,7 @@ function ApiKeys() {
   const [err, setErr] = useState("");
   const when = (value: string | null) =>
     value
-      ? new Date(value).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+      ? new Date(value).toLocaleString(dateLocale(locale), {
           dateStyle: "medium",
           timeStyle: "short",
           timeZone: "Asia/Dubai",

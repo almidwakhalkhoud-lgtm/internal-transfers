@@ -1,4 +1,5 @@
 "use client";
+import { dateLocale } from "@/lib/i18n";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Eraser, Signature } from "lucide-react";
 import { api } from "@/lib/client";
@@ -16,7 +17,7 @@ export type SignatureView = {
 function useDate() {
   const { locale } = useBuzz();
   return (value: string) =>
-    new Date(value).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB", {
+    new Date(value).toLocaleString(dateLocale(locale), {
       day: "2-digit",
       month: "short",
       year: "numeric",

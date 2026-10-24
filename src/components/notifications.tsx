@@ -1,4 +1,5 @@
 "use client";
+import { dateLocale } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -514,9 +515,7 @@ function PushSettings() {
             <li key={d.id}>
               <span>
                 {t("Device")} {i + 1} ·{" "}
-                {new Date(d.updatedAt).toLocaleString(
-                  locale === "fa" ? "fa-IR" : "en-GB",
-                )}
+                {new Date(d.updatedAt).toLocaleString(dateLocale(locale))}
               </span>
               <button
                 className="button"
@@ -702,9 +701,7 @@ export function NotificationsPage() {
               )}
             </span>
             <time dateTime={n.createdAt}>
-              {new Date(n.createdAt).toLocaleString(
-                locale === "fa" ? "fa-IR" : "en-GB",
-              )}
+              {new Date(n.createdAt).toLocaleString(dateLocale(locale))}
             </time>
           </summary>
           <div
@@ -730,7 +727,7 @@ export function NotificationsPage() {
             ) : (
               <p className="notification-success">
                 {n.acknowledgedAt
-                  ? `${t("Acknowledged by")} ${n.acknowledgedName} · ${new Date(n.acknowledgedAt).toLocaleString(locale === "fa" ? "fa-IR" : "en-GB")}`
+                  ? `${t("Acknowledged by")} ${n.acknowledgedName} · ${new Date(n.acknowledgedAt).toLocaleString(dateLocale(locale))}`
                   : t(
                       "Reminders stopped because this transfer was received or rejected.",
                     )}

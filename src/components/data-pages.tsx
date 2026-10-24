@@ -1,4 +1,5 @@
 "use client";
+import { dateLocale } from "@/lib/i18n";
 import { Dropdown } from "@/components/dropdown";
 import { Form } from "@/components/form";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -114,7 +115,7 @@ export function LoadError({
 export function TransferTable({ items }: { items: Summary[] }) {
   const { t, locale } = useBuzz();
   const date = (value: string) =>
-    new Date(value).toLocaleDateString(locale === "fa" ? "fa-IR" : "en-GB", {
+    new Date(value).toLocaleDateString(dateLocale(locale), {
       day: "2-digit",
       month: "short",
       year: "numeric",
