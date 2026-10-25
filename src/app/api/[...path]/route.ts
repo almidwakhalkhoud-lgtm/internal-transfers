@@ -856,7 +856,17 @@ async function handle(
           throw new HttpError(409, "This request is already closed");
         const pdf = await orderFormPdf({
           ...r,
-          lines: (r.lines as RequestLine[]).filter((l) => !l.added),
+          // Items the source added go on the form too, with the quantity
+          // and unit it entered, marked in the description column.
+          lines: (r.lines as RequestLine[]).map((l) =>
+            l.added
+              ? {
+                  ...l,
+                  quantity: l.supplied ?? "",
+                  note: ["Added by source", l.note].filter(Boolean).join(" · "),
+                }
+              : l,
+          ),
         });
         return new NextResponse(new Uint8Array(pdf), {
           headers: {

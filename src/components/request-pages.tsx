@@ -707,6 +707,8 @@ type Extra = {
   product?: { id: string; code: string; description: string; units: string[] };
   supplied: string;
   unit: string;
+  // A renamable item (ss) is named for this line only.
+  description?: string;
   error?: string;
 };
 export function RequestDetail({ id }: { id: string }) {
@@ -734,6 +736,7 @@ export function RequestDetail({ id }: { id: string }) {
           },
           supplied: l.supplied ?? "",
           unit: l.unit,
+          description: l.description,
         })),
     );
   }
@@ -779,6 +782,7 @@ export function RequestDetail({ id }: { id: string }) {
       const product = result.items.length === 1 ? result.items[0] : undefined;
       setExtra(e.key, {
         product,
+        description: undefined,
         unit: product?.units[0] ?? "",
         error: product
           ? undefined
@@ -811,6 +815,10 @@ export function RequestDetail({ id }: { id: string }) {
       productId: e.product!.id,
       supplied: e.supplied,
       unit: e.unit,
+      description:
+        renamable(e.product!.code) && e.description?.trim()
+          ? e.description.trim()
+          : undefined,
     })),
   });
   const checked = () => {
@@ -1223,15 +1231,28 @@ export function RequestDetail({ id }: { id: string }) {
                     >
                       <Trash2 size={17} />
                     </button>
-                    <span
-                      className={cx(
-                        "col-span-2 text-sm md:col-span-1",
-                        e.error ? "text-red-700" : "text-muted",
-                      )}
-                      dir="auto"
-                    >
-                      {e.error ? t(e.error) : (e.product?.description ?? "—")}
-                    </span>
+                    {e.product && !e.error && renamable(e.product.code) ? (
+                      <input
+                        className={cx(inputStyles, "col-span-2 md:col-span-1")}
+                        aria-label={`${t("Added item description")} ${k + 1}`}
+                        dir="auto"
+                        maxLength={2000}
+                        value={e.description ?? e.product.description}
+                        onChange={(ev) =>
+                          setExtra(e.key, { description: ev.target.value })
+                        }
+                      />
+                    ) : (
+                      <span
+                        className={cx(
+                          "col-span-2 text-sm md:col-span-1",
+                          e.error ? "text-red-700" : "text-muted",
+                        )}
+                        dir="auto"
+                      >
+                        {e.error ? t(e.error) : (e.product?.description ?? "—")}
+                      </span>
+                    )}
                     <input
                       id={`extra-qty-${e.key}`}
                       className={cx(

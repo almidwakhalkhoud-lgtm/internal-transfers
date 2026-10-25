@@ -727,6 +727,7 @@ export const fa: Record<string, string> = {
   "No new notifications": "اعلان جدیدی نیست",
   Acknowledge: "مطلع شدم",
   "View details": "مشاهدهٔ جزئیات",
+  "Added item description": "شرح قلم اضافه‌شده",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

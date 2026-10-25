@@ -2218,3 +2218,75 @@ test("the bell opens a panel to read and acknowledge alerts in place", async ({
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
 });
+test("ss is named per line in a new request and in items the supplier adds", async ({
+  page,
+  browser,
+}) => {
+  const ss = await db.product.upsert({
+    where: { code: "SS" },
+    create: {
+      code: "SS",
+      description: "Midwakh service",
+      units: [],
+      source: "TEST FIXTURE",
+    },
+    update: {},
+  });
+  await login(page);
+  await page.goto("/requests/new");
+  await page.waitForLoadState("networkidle");
+  await page.getByLabel("Request from", { exact: true }).click();
+  await page
+    .getByRole("option", { name: "TEST RESTRICTED LOCATION", exact: true })
+    .click();
+  await page.getByLabel("Deliver to", { exact: true }).click();
+  await page.getByRole("option", { name: "Main", exact: true }).click();
+  await page.getByLabel("Code / Barcode 1", { exact: true }).fill("ss");
+  await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
+  await page
+    .getByLabel("Product description 1", { exact: true })
+    .fill("Midwakh cleaning");
+  await page.getByLabel("Quantity 1", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Send request", exact: true }).click();
+  await expect(page).toHaveURL(/\/requests\/(?!new$)[^/]+$/);
+  const id = page.url().split("/").pop()!;
+  const supplierContext = await browser.newContext();
+  const supplier = await supplierContext.newPage();
+  await login(supplier, "outside@buzz.test");
+  await supplier.goto(`/requests/${id}`);
+  await expect(supplier.getByText("Midwakh cleaning")).toBeVisible();
+  await supplier.getByRole("button", { name: "Add item", exact: true }).click();
+  await supplier.getByLabel("Added item code 1", { exact: true }).fill("ss");
+  await supplier
+    .getByLabel("Added item code 1", { exact: true })
+    .press("Enter");
+  const name = supplier.getByLabel("Added item description 1", {
+    exact: true,
+  });
+  await expect(name).toHaveValue("Midwakh service");
+  await name.fill("Midwakh repair");
+  await supplier.getByLabel("Added item quantity 1", { exact: true }).fill("1");
+  await supplier
+    .getByRole("button", { name: "Confirm and create transfer", exact: true })
+    .click();
+  await supplier
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirm and generate PDF", exact: true })
+    .click();
+  await expect(
+    supplier.getByText("Transfer Confirmed Successfully"),
+  ).toBeVisible({ timeout: 60000 });
+  const saved = await db.stockRequest.findUniqueOrThrow({
+    where: { id },
+    include: { transfer: true },
+  });
+  expect(saved.transfer!.lines).toEqual([
+    expect.objectContaining({ code: "SS", description: "Midwakh cleaning" }),
+    expect.objectContaining({ code: "SS", description: "Midwakh repair" }),
+  ]);
+  // The catalog keeps its own name.
+  expect(
+    (await db.product.findUniqueOrThrow({ where: { id: ss.id } })).description,
+  ).toBe("Midwakh service");
+  await supplierContext.close();
+});
