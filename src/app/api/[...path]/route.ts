@@ -37,6 +37,8 @@ import {
   findRequest,
   fulfillRequest,
   saveSupply,
+  previewSupply,
+  orderFormLines,
 } from "@/lib/requests";
 import { missingPushKeys, pushPublicKey, sendPush } from "@/lib/push";
 import { integrationApi, newApiKey } from "@/lib/integration-api";
@@ -850,43 +852,32 @@ async function handle(
       }
       // An open request as the paper order form, a PDF so it prints the
       // same from any phone, tablet or computer.
-      if (action === "form" && method === "GET") {
+      // An open request as the paper order form, a PDF so it prints the
+      // same from any phone, tablet or computer. GET gives the original
+      // (?version=original) or the current saved state; POST gives the
+      // current state with the supplier's unsaved changes from the screen.
+      if (action === "form" && (method === "GET" || method === "POST")) {
         const r = await findRequest(user, id);
         if (r.status !== "OPEN")
           throw new HttpError(409, "This request is already closed");
-        // Items removed as not available stay off the form: those saved,
-        // and those removed on screen but not saved yet (`removed` lists
-        // their positions among the requested items).
-        const unsaved = new Set(
-          (req.nextUrl.searchParams.get("removed") ?? "")
-            .split(",")
-            .filter((n) => /^\d+$/.test(n))
-            .map(Number),
-        );
-        let asked = -1;
-        const lines = (r.lines as RequestLine[]).filter((l) => {
-          if (l.added) return true;
-          asked++;
-          return !l.removed && !unsaved.has(asked);
-        });
+        const version =
+          method === "GET" &&
+          req.nextUrl.searchParams.get("version") === "original"
+            ? "ORIGINAL"
+            : "CURRENT";
+        const lines =
+          method === "POST"
+            ? await previewSupply(user, id, await req.json())
+            : (r.lines as RequestLine[]);
         const pdf = await orderFormPdf({
           ...r,
-          // Items the source added go on the form too, with the quantity
-          // and unit it entered, marked in the description column.
-          lines: lines.map((l) =>
-            l.added
-              ? {
-                  ...l,
-                  quantity: l.supplied ?? "",
-                  note: ["Added by source", l.note].filter(Boolean).join(" · "),
-                }
-              : l,
-          ),
+          version,
+          lines: orderFormLines(lines, version),
         });
         return new NextResponse(new Uint8Array(pdf), {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `inline; filename="${r.number}.pdf"`,
+            "Content-Disposition": `inline; filename="${r.number}-${version.toLowerCase()}.pdf"`,
             "Cache-Control": "private, no-store",
           },
         });

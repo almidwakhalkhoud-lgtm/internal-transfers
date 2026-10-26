@@ -728,6 +728,8 @@ export const fa: Record<string, string> = {
   Acknowledge: "مطلع شدم",
   "View details": "مشاهدهٔ جزئیات",
   "Added item description": "شرح قلم اضافه‌شده",
+  "Print original": "چاپ نسخهٔ اصلی",
+  "Print current": "چاپ نسخهٔ فعلی",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;

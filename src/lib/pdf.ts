@@ -239,6 +239,8 @@ export async function generatePdf(t: DocumentData) {
   }
 }
 export type OrderFormData = {
+  // ORIGINAL: as the requester sent it. CURRENT: with the source's changes.
+  version: "ORIGINAL" | "CURRENT";
   number: string;
   creatorName: string;
   supplier: string;
@@ -251,6 +253,9 @@ export type OrderFormData = {
     quantity: string;
     unit: string;
     note?: string;
+    // What the source sends; blank on the original to fill in by hand.
+    sourceQty?: string;
+    sourceUnit?: string;
   }[];
 };
 // An open request as the shops' paper ORDER FORM (A4): what was ordered on
@@ -269,7 +274,7 @@ export async function orderFormHtml(r: OrderFormData) {
   const rows = [
     ...r.lines.map(
       (l, i) =>
-        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td></td><td></td><td class="note" dir="auto">${l.note ? esc(l.note) : ""}</td></tr>`,
+        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td dir="ltr">${esc(l.sourceQty ?? "")}</td><td class="unit" dir="auto">${esc(l.sourceUnit ?? "")}</td><td class="note" dir="auto">${l.note ? esc(l.note) : ""}</td></tr>`,
     ),
     ...Array.from(
       { length: Math.max(30 - r.lines.length, 0) },
@@ -291,7 +296,7 @@ thead{display:table-header-group}tr{break-inside:avoid}
 .head b{font-weight:normal;border-bottom:1px solid #000;padding:0 4px}
 .note{font-size:8pt}
 p{margin:8px 0 0}
-</style></head><body><table><colgroup><col style="width:5.2%"><col style="width:9.1%"><col style="width:25%"><col style="width:9.1%"><col style="width:9.1%"><col style="width:7.6%"><col style="width:9.1%"><col style="width:25.8%"></colgroup><thead><tr class="head"><td colspan="8"><span>Transfer Order By <b dir="auto">${esc(r.creatorName)}</b></span><span>From <b dir="auto">${esc(r.supplier)}</b></span><span>To <b dir="auto">${esc(r.requester)}</b></span><span>Date : ${y} / ${m} / ${d}</span><span>No. <b>${esc(r.number)}</b></span></td></tr><tr><th colspan="5" class="c">ORDER FORM</th><th colspan="2">SOURCE STOCK</th><th rowspan="2" class="c">SOURCE<br>DISCRIPTION</th></tr><tr><th class="c nw">NO.</th><th>CODE</th><th class="c">NAME</th><th>QTY</th><th>UNIT</th><th>QTY</th><th>UNIT</th></tr></thead><tbody>${rows.join("")}</tbody></table>${r.remarks ? `<p dir="auto">Remarks: ${esc(r.remarks)}</p>` : ""}</body></html>`;
+</style></head><body><table><colgroup><col style="width:5.2%"><col style="width:9.1%"><col style="width:25%"><col style="width:9.1%"><col style="width:9.1%"><col style="width:7.6%"><col style="width:9.1%"><col style="width:25.8%"></colgroup><thead><tr class="head"><td colspan="8"><span>Transfer Order By <b dir="auto">${esc(r.creatorName)}</b></span><span>From <b dir="auto">${esc(r.supplier)}</b></span><span>To <b dir="auto">${esc(r.requester)}</b></span><span>Date : ${y} / ${m} / ${d}</span><span>No. <b>${esc(r.number)}</b></span></td></tr><tr><th colspan="5" class="c">ORDER FORM · ${r.version}</th><th colspan="2">SOURCE STOCK</th><th rowspan="2" class="c">SOURCE<br>DISCRIPTION</th></tr><tr><th class="c nw">NO.</th><th>CODE</th><th class="c">NAME</th><th>QTY</th><th>UNIT</th><th>QTY</th><th>UNIT</th></tr></thead><tbody>${rows.join("")}</tbody></table>${r.remarks ? `<p dir="auto">Remarks: ${esc(r.remarks)}</p>` : ""}</body></html>`;
 }
 export async function orderFormPdf(r: OrderFormData) {
   const release = await acquirePdfSlot();

@@ -2003,30 +2003,60 @@ test("a request prints as the order form and the asked location sees one way to 
   await expect(
     supplier.getByRole("button", { name: "Cancel request" }),
   ).toHaveCount(0);
-  // The order form is a PDF. A computer opens it in a new tab to print.
+  mkdirSync("output/qa", { recursive: true });
+  // Two order forms: as sent, and as it stands. On a computer the page
+  // fetches the PDF and shows it in a new tab.
   await supplier.goto(`/requests/${request.id}`);
-  // Headless Chrome has no PDF viewer, so check the new tab asks for it.
-  // Item 2 is removed in the saved progress; the button passes it along.
-  const asked = supplierContext.waitForEvent("request", (r) =>
-    r.url().endsWith(`/api/requests/${request.id}/form?removed=1`),
+  const original = supplier.waitForRequest(
+    (r) =>
+      r.method() === "GET" &&
+      r.url().endsWith(`/api/requests/${request.id}/form?version=original`),
   );
-  await supplier.getByRole("button", { name: "Print", exact: true }).click();
-  await asked;
-  // An item removed on screen but not saved yet is left off as well.
+  await supplier
+    .getByRole("button", { name: "Print original", exact: true })
+    .click();
+  await original;
+  // The current form carries the changes on screen, saved or not.
   await supplier
     .getByRole("button", { name: "Not available 1", exact: true })
     .click();
-  const withRemoval = supplierContext.waitForEvent("request", (r) =>
-    r.url().endsWith(`/api/requests/${request.id}/form?removed=0,1`),
+  await supplier.getByLabel("Added item quantity 1", { exact: true }).fill("3");
+  const current = supplier.waitForRequest(
+    (r) =>
+      r.method() === "POST" &&
+      r.url().endsWith(`/api/requests/${request.id}/form`),
   );
-  await supplier.getByRole("button", { name: "Print", exact: true }).click();
-  await withRemoval;
-  writeFileSync(
-    "output/qa/request-order-form-unsaved-removal.pdf",
-    await (
-      await supplier.request.get(`/api/requests/${request.id}/form?removed=0`)
-    ).body(),
-  );
+  await supplier
+    .getByRole("button", { name: "Print current", exact: true })
+    .click();
+  const body = (await current).postDataJSON();
+  expect(body.lines).toEqual([{ removed: true }, { removed: true }]);
+  expect(body.added).toEqual([expect.objectContaining({ supplied: "3" })]);
+  for (const [name, res] of [
+    [
+      "original",
+      await supplier.request.get(
+        `/api/requests/${request.id}/form?version=original`,
+      ),
+    ],
+    [
+      "current",
+      await supplier.request.post(`/api/requests/${request.id}/form`, {
+        data: {
+          lines: [
+            { supplied: "40", unit: withUnit.units[0] },
+            { removed: true },
+          ],
+          added: [{ productId: noUnit.id, supplied: "3", unit: "" }],
+        },
+        headers: { Origin: origin },
+      }),
+    ],
+  ] as const) {
+    expect(res.ok()).toBe(true);
+    expect(res.headers()["content-type"]).toBe("application/pdf");
+    writeFileSync(`output/qa/request-order-form-${name}.pdf`, await res.body());
+  }
   await supplier.reload();
   // A phone hands the PDF file to its share sheet, where Print is: an app
   // added to an iPhone's Home Screen cannot print a PDF it opens.
@@ -2043,14 +2073,16 @@ test("a request prints as the order form and the asked location sees one way to 
   const iphone = await phone.newPage();
   await login(iphone, "outside@buzz.test");
   await iphone.goto(`/requests/${request.id}`);
-  await iphone.getByRole("button", { name: "Print", exact: true }).click();
+  await iphone
+    .getByRole("button", { name: "Print original", exact: true })
+    .click();
   await expect
     .poll(() =>
       iphone.evaluate(() => (window as unknown as { shared: object[] }).shared),
     )
     .toEqual([
       expect.objectContaining({
-        name: `${request.number}.pdf`,
+        name: `${request.number}-original.pdf`,
         type: "application/pdf",
       }),
     ]);
@@ -2059,13 +2091,6 @@ test("a request prints as the order form and the asked location sees one way to 
     fullPage: true,
   });
   await phone.close();
-  const form = await supplier.request.get(`/api/requests/${request.id}/form`);
-  expect(form.ok()).toBe(true);
-  expect(form.headers()["content-type"]).toBe("application/pdf");
-  const pdf = await form.body();
-  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-  mkdirSync("output/qa", { recursive: true });
-  writeFileSync("output/qa/request-order-form.pdf", pdf);
   // The person who asked still cancels their own request.
   await page.goto(`/requests/${request.id}`);
   await expect(
@@ -2088,7 +2113,7 @@ test("a request prints as the order form and the asked location sees one way to 
   ).toBeVisible({ timeout: 60000 });
   await supplier.reload();
   await expect(
-    supplier.getByRole("button", { name: "Print", exact: true }),
+    supplier.getByRole("button", { name: /^Print (original|current)$/ }),
   ).toHaveCount(0);
   expect(
     (await supplier.request.get(`/api/requests/${request.id}/form`)).status(),

@@ -650,46 +650,68 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
     </>
   );
 }
-// Prints an open request's order form. A computer opens the PDF in a tab to
-// print; a phone fetches it and hands it to the share sheet (Print, Files,
-// WhatsApp), since a Home Screen app on iPhone cannot print a PDF it opens.
+// Prints an open request's order form, as sent (original) or as it stands
+// (current, with the supplier's changes on screen when it sends `body`). A
+// computer opens the PDF in a new tab, opened at the tap so it is not
+// blocked; a phone hands it to the share sheet (Print, Files, WhatsApp),
+// since a Home Screen app on iPhone cannot print a PDF it opens.
 function OrderFormPrint({
   id,
   number,
-  removed,
+  version,
+  body,
 }: {
   id: string;
   number: string;
-  // Requested items removed on screen but not saved yet.
-  removed: number[];
+  version: "original" | "current";
+  body?: unknown;
 }) {
   const { t, toast } = useBuzz();
-  const [ready, setReady] = useState<{ url: string; file: File } | null>(null);
+  const [ready, setReady] = useState<{ key: string; file: File } | null>(null);
   const [busy, setBusy] = useState(false);
-  const url = `/api/requests/${id}/form${removed.length ? `?removed=${removed.join(",")}` : ""}`;
-  // A PDF fetched for other removals is not reused.
-  const file = ready?.url === url ? ready.file : null;
+  const url = `/api/requests/${id}/form${version === "original" ? "?version=original" : ""}`;
+  const key = `${url}|${JSON.stringify(body ?? null)}`;
   async function print() {
-    if (!isMobileDevice()) {
-      window.open(url, "_blank", "noopener");
-      return;
-    }
-    let pdf = file;
+    const mobile = isMobileDevice();
+    const tab = mobile ? null : window.open("", "_blank");
+    tab?.document.write(
+      `<p style="font:16px sans-serif">${t("Preparing PDF…")}</p>`,
+    );
+    let pdf = ready?.key === key ? ready.file : null;
     if (!pdf) {
       setBusy(true);
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error((await res.json()).error);
-        pdf = new File([await res.blob()], `${number}.pdf`, {
+        const res = await fetch(
+          url,
+          body === undefined
+            ? undefined
+            : {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              },
+        );
+        if (!res.ok)
+          throw new Error((await res.json().catch(() => ({}))).error);
+        pdf = new File([await res.blob()], `${number}-${version}.pdf`, {
           type: "application/pdf",
         });
-        setReady({ url, file: pdf });
+        setReady({ key, file: pdf });
       } catch (e) {
+        tab?.close();
         toast(t((e as Error).message || "Request failed"));
         return;
       } finally {
         setBusy(false);
       }
+    }
+    if (tab) {
+      tab.location.href = URL.createObjectURL(pdf);
+      return;
+    }
+    if (!mobile) {
+      downloadBlob(pdf, pdf.name);
+      return;
     }
     try {
       await sharePdf(pdf);
@@ -705,7 +727,13 @@ function OrderFormPrint({
   return (
     <Button disabled={busy} onClick={print}>
       <Printer size={16} />
-      {t(busy ? "Preparing PDF…" : "Print")}
+      {t(
+        busy
+          ? "Preparing PDF…"
+          : version === "original"
+            ? "Print original"
+            : "Print current",
+      )}
     </Button>
   );
 }
@@ -886,19 +914,23 @@ export function RequestDetail({ id }: { id: string }) {
       <PageTitle
         title="Request details"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {/* An open request prints as the order form (a PDF, so it
                 prints on iPhone too); a fulfilled one as its transfer PDF. */}
             {data?.status === "OPEN" && (
-              <OrderFormPrint
-                id={id}
-                number={data.number}
-                removed={
-                  editing
-                    ? decisions.flatMap((d, i) => (d.removed ? [i] : []))
-                    : []
-                }
-              />
+              <>
+                <OrderFormPrint
+                  id={id}
+                  number={data.number}
+                  version="original"
+                />
+                <OrderFormPrint
+                  id={id}
+                  number={data.number}
+                  version="current"
+                  body={editing ? payload() : undefined}
+                />
+              </>
             )}
             <Link href="/requests" className={buttonStyles.secondary}>
               <ArrowRight size={16} className="ltr:rotate-180" />

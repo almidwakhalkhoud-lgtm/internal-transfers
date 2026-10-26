@@ -224,6 +224,46 @@ async function openForSupply(
     throw new HttpError(409, "This request is already closed");
   return r;
 }
+// The supplier's unsaved decisions applied to the request, without saving,
+// so the current order form can show what is on screen.
+export async function previewSupply(user: User, id: string, input: unknown) {
+  return db.$transaction(async (tx) => {
+    const r = await openForSupply(tx, user, id);
+    return (await applySupply(tx, r.lines as RequestLine[], input)).lines;
+  });
+}
+// The order form's rows. The original is the request as sent, with every
+// requested item and the source columns blank. The current one leaves off
+// items not available, fills the source columns with what is being sent,
+// and adds the items the source added.
+export function orderFormLines(
+  lines: RequestLine[],
+  version: "ORIGINAL" | "CURRENT",
+) {
+  if (version === "ORIGINAL")
+    return lines
+      .filter((l) => !l.added)
+      .map((l) => ({
+        code: l.code,
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit,
+        note: l.note,
+      }));
+  return lines
+    .filter((l) => !l.removed)
+    .map((l) => ({
+      code: l.code,
+      description: l.description,
+      quantity: l.added ? "" : l.quantity,
+      unit: l.added ? "" : l.unit,
+      sourceQty: l.supplied ?? l.quantity,
+      sourceUnit: l.supplyUnit ?? l.unit,
+      note: [l.added ? "Added by source" : "", l.note ?? ""]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+}
 // Keeps the supplier's work so far without sending anything.
 export async function saveSupply(user: User, id: string, input: unknown) {
   await db.$transaction(async (tx) => {
