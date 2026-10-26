@@ -854,11 +854,26 @@ async function handle(
         const r = await findRequest(user, id);
         if (r.status !== "OPEN")
           throw new HttpError(409, "This request is already closed");
+        // Items removed as not available stay off the form: those saved,
+        // and those removed on screen but not saved yet (`removed` lists
+        // their positions among the requested items).
+        const unsaved = new Set(
+          (req.nextUrl.searchParams.get("removed") ?? "")
+            .split(",")
+            .filter((n) => /^\d+$/.test(n))
+            .map(Number),
+        );
+        let asked = -1;
+        const lines = (r.lines as RequestLine[]).filter((l) => {
+          if (l.added) return true;
+          asked++;
+          return !l.removed && !unsaved.has(asked);
+        });
         const pdf = await orderFormPdf({
           ...r,
           // Items the source added go on the form too, with the quantity
           // and unit it entered, marked in the description column.
-          lines: (r.lines as RequestLine[]).map((l) =>
+          lines: lines.map((l) =>
             l.added
               ? {
                   ...l,

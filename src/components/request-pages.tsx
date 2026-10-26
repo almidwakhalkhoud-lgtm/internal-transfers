@@ -653,11 +653,22 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
 // Prints an open request's order form. A computer opens the PDF in a tab to
 // print; a phone fetches it and hands it to the share sheet (Print, Files,
 // WhatsApp), since a Home Screen app on iPhone cannot print a PDF it opens.
-function OrderFormPrint({ id, number }: { id: string; number: string }) {
+function OrderFormPrint({
+  id,
+  number,
+  removed,
+}: {
+  id: string;
+  number: string;
+  // Requested items removed on screen but not saved yet.
+  removed: number[];
+}) {
   const { t, toast } = useBuzz();
-  const [file, setFile] = useState<File | null>(null);
+  const [ready, setReady] = useState<{ url: string; file: File } | null>(null);
   const [busy, setBusy] = useState(false);
-  const url = `/api/requests/${id}/form`;
+  const url = `/api/requests/${id}/form${removed.length ? `?removed=${removed.join(",")}` : ""}`;
+  // A PDF fetched for other removals is not reused.
+  const file = ready?.url === url ? ready.file : null;
   async function print() {
     if (!isMobileDevice()) {
       window.open(url, "_blank", "noopener");
@@ -672,7 +683,7 @@ function OrderFormPrint({ id, number }: { id: string; number: string }) {
         pdf = new File([await res.blob()], `${number}.pdf`, {
           type: "application/pdf",
         });
-        setFile(pdf);
+        setReady({ url, file: pdf });
       } catch (e) {
         toast(t((e as Error).message || "Request failed"));
         return;
@@ -879,7 +890,15 @@ export function RequestDetail({ id }: { id: string }) {
             {/* An open request prints as the order form (a PDF, so it
                 prints on iPhone too); a fulfilled one as its transfer PDF. */}
             {data?.status === "OPEN" && (
-              <OrderFormPrint id={id} number={data.number} />
+              <OrderFormPrint
+                id={id}
+                number={data.number}
+                removed={
+                  editing
+                    ? decisions.flatMap((d, i) => (d.removed ? [i] : []))
+                    : []
+                }
+              />
             )}
             <Link href="/requests" className={buttonStyles.secondary}>
               <ArrowRight size={16} className="ltr:rotate-180" />

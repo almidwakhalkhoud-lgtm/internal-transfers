@@ -2006,11 +2006,28 @@ test("a request prints as the order form and the asked location sees one way to 
   // The order form is a PDF. A computer opens it in a new tab to print.
   await supplier.goto(`/requests/${request.id}`);
   // Headless Chrome has no PDF viewer, so check the new tab asks for it.
+  // Item 2 is removed in the saved progress; the button passes it along.
   const asked = supplierContext.waitForEvent("request", (r) =>
-    r.url().endsWith(`/api/requests/${request.id}/form`),
+    r.url().endsWith(`/api/requests/${request.id}/form?removed=1`),
   );
   await supplier.getByRole("button", { name: "Print", exact: true }).click();
   await asked;
+  // An item removed on screen but not saved yet is left off as well.
+  await supplier
+    .getByRole("button", { name: "Not available 1", exact: true })
+    .click();
+  const withRemoval = supplierContext.waitForEvent("request", (r) =>
+    r.url().endsWith(`/api/requests/${request.id}/form?removed=0,1`),
+  );
+  await supplier.getByRole("button", { name: "Print", exact: true }).click();
+  await withRemoval;
+  writeFileSync(
+    "output/qa/request-order-form-unsaved-removal.pdf",
+    await (
+      await supplier.request.get(`/api/requests/${request.id}/form?removed=0`)
+    ).body(),
+  );
+  await supplier.reload();
   // A phone hands the PDF file to its share sheet, where Print is: an app
   // added to an iPhone's Home Screen cannot print a PDF it opens.
   const phone = await browser.newContext({ ...devices["iPhone 13"] });
