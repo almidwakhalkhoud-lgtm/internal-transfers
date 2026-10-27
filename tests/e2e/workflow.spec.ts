@@ -763,6 +763,8 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
   await login(page);
   const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
   await page.goto("/new-transfer");
+  // The dev server can keep the page's first render for a moment.
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("From location", { exact: true }).click();
   await page.getByRole("option", { name: "Main", exact: true }).click();
   await page.getByLabel("To location", { exact: true }).click();
@@ -770,7 +772,13 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
   await page.getByLabel("Code / Barcode 1", { exact: true }).fill(p.code);
   await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
   await page.getByLabel("Quantity 1", { exact: true }).fill("7.25");
+  // Saving asks for a name, suggested from the route and items.
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  const naming = page.getByRole("dialog", { name: "Save draft" });
+  const draftName = naming.getByLabel("Draft name", { exact: true });
+  await expect(draftName).toHaveValue("Main → Al Azaiba · 1 items");
+  await draftName.fill("Morning order");
+  await naming.getByRole("button", { name: "Save draft", exact: true }).click();
   // The incoming-transfers banner is a status too; pick this message.
   await expect(
     page.getByRole("status").filter({ hasText: "Draft saved" }),
@@ -783,15 +791,48 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
     where: { userId: "test-staff" },
     orderBy: { updatedAt: "desc" },
   });
+  expect(saved.data).toMatchObject({ name: "Morning order" });
+  // New draft starts a blank form; the first draft stays saved.
+  await page.getByRole("button", { name: "New draft", exact: true }).click();
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
+  await page.getByLabel("Code / Barcode 1", { exact: true }).fill(p.code);
+  await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
+  await page.getByLabel("Quantity 1", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await naming.getByLabel("Draft name", { exact: true }).fill("Evening order");
+  await naming.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(naming).toHaveCount(0);
+  await expect
+    .poll(() => db.draft.count({ where: { userId: "test-staff" } }))
+    .toBeGreaterThanOrEqual(2);
   await page.reload();
   await page.getByText(/^Saved drafts/).click();
   await page
     .locator(`[data-draft="${saved.id}"]`)
-    .getByRole("button", { name: /^Open draft · Main → Al Azaiba · / })
+    .getByRole("button", { name: /^Open draft · Morning order · / })
     .click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue(
     "7.25",
   );
+  // An open draft can be saved as a separate copy, leaving it as it was.
+  await page.getByLabel("Quantity 1", { exact: true }).fill("9");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await naming.getByLabel("Draft name", { exact: true }).fill("Morning copy");
+  await naming
+    .getByRole("button", { name: "Save as a new draft", exact: true })
+    .click();
+  await expect(naming).toHaveCount(0);
+  const copy = await db.draft.findFirstOrThrow({
+    where: { userId: "test-staff", NOT: { id: saved.id } },
+    orderBy: { updatedAt: "desc" },
+  });
+  expect(copy.data).toMatchObject({ name: "Morning copy" });
+  const original = await db.draft.findUniqueOrThrow({
+    where: { id: saved.id },
+  });
+  expect(
+    (original.data as { lines: { quantity: string }[] }).lines[0].quantity,
+  ).toBe("7.25");
 });
 test("mobile layout remains contained, offers navigation and keeps confirmation accessible", async ({
   page,
@@ -799,6 +840,7 @@ test("mobile layout remains contained, offers navigation and keeps confirmation 
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
   await page.goto("/new-transfer");
+  await page.waitForLoadState("networkidle");
   await expect(
     page.getByRole("button", { name: "Confirm Transfer", exact: true }),
   ).toBeVisible();
@@ -1031,6 +1073,7 @@ test("custom calendar selects leap day, supports keyboard, saves ISO date and cl
 }) => {
   await login(page);
   await page.goto("/new-transfer");
+  await page.waitForLoadState("networkidle");
   const date = page.getByLabel("Transfer date", { exact: true });
   await date.click();
   let calendar = page.getByRole("dialog", { name: "Select date", exact: true });
@@ -1059,6 +1102,10 @@ test("custom calendar selects leap day, supports keyboard, saves ISO date and cl
   await expect(date).toContainText("29 Feb 2024");
   await expect(date).toBeFocused();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Save draft" })
+    .getByRole("button", { name: "Save draft", exact: true })
+    .click();
   await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
   const drafts = await (await page.request.get("/api/drafts")).json();
   expect(drafts[0].data.date).toBe("2024-02-29");
@@ -1085,6 +1132,10 @@ test("custom calendar selects leap day, supports keyboard, saves ISO date and cl
     fullPage: true,
   });
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
+  // Back to English, so later tests see the language they expect.
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "English", exact: true }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toBeVisible();
 });
 
 test("desktop typography is readable and hamburger closes outside or with Escape", async ({
@@ -1778,6 +1829,7 @@ test("a request survives a reload on the device and can be saved as a draft", as
   await login(page);
   const p = await db.product.findUniqueOrThrow({ where: { id: "real-unit" } });
   await page.goto("/requests/new");
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Request from", { exact: true }).click();
   await page
     .getByRole("option", { name: "TEST RESTRICTED LOCATION", exact: true })
@@ -1797,6 +1849,11 @@ test("a request survives a reload on the device and can be saved as a draft", as
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("3");
   // Saved as a draft on the server, it can be reopened after starting over.
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  const naming = page.getByRole("dialog", { name: "Save draft" });
+  await naming
+    .getByLabel("Draft name", { exact: true })
+    .fill("Weekly cigarettes");
+  await naming.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Draft saved" }),
   ).toBeVisible();
@@ -1809,7 +1866,7 @@ test("a request survives a reload on the device and can be saved as a draft", as
   await page.getByText(/^Saved drafts/).click();
   await page
     .locator(`[data-draft="${draft.id}"]`)
-    .getByRole("button", { name: /^Open draft · / })
+    .getByRole("button", { name: /^Open draft · Weekly cigarettes · / })
     .click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("3");
   await page.getByRole("button", { name: "Send request", exact: true }).click();

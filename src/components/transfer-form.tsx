@@ -80,6 +80,8 @@ type DraftData = {
   date: string;
   remarks: string;
   lines: Line[];
+  // What the person called the draft, to tell several apart.
+  name?: string;
 };
 const blank = (): Line => ({
   id: crypto.randomUUID(),
@@ -270,7 +272,16 @@ export function TransferForm({
   } | null>(null);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [deleting, setDeleting] = useState<SavedDraft | null>(null);
-  const data = { sourceId, destinationId, date, remarks, lines };
+  const [draftName, setDraftName] = useState("");
+  const [naming, setNaming] = useState(false);
+  const data = {
+    sourceId,
+    destinationId,
+    date,
+    remarks,
+    lines,
+    name: draftName,
+  };
   // Typing is kept on this device until the transfer is confirmed, so a
   // reload or a sign-out does not lose it.
   const backup = useFormBackup(
@@ -286,13 +297,16 @@ export function TransferForm({
         if (saved.date) setDate(saved.date);
         setRemarks(saved.remarks ?? "");
         setLines(saved.lines);
+        setDraftName(saved.name ?? "");
       }
       return used;
     },
   );
-  // A draft has no number yet, so it is named by its route and save time.
+  // A draft has no number yet: it shows the name it was given (or its
+  // route) and when it was saved. A new name is suggested from the form.
+  const suggestedName = `${name(sourceId) ?? "—"} → ${name(destinationId) ?? "—"} · ${validLines.length} ${t("items")}`;
   const draftLabel = (d: SavedDraft) =>
-    `${name(d.data.sourceId) ?? "—"} → ${name(d.data.destinationId) ?? "—"} · ${new Date(
+    `${d.data.name?.trim() || `${name(d.data.sourceId) ?? "—"} → ${name(d.data.destinationId) ?? "—"}`} · ${new Date(
       d.updatedAt,
     ).toLocaleString(dateLocale(locale), {
       day: "2-digit",
@@ -323,8 +337,13 @@ export function TransferForm({
       .catch((e) => setError(e.message));
     loadDrafts();
   }, [loadDrafts]); // initial server state
-  async function save() {
-    await api("drafts", { id: key, data });
+  // Saves the form as its draft, or as a new draft so an open saved draft
+  // stays as it was.
+  async function save(asNew = false, newName = draftName) {
+    const id = asNew ? crypto.randomUUID() : key;
+    await api("drafts", { id, data: { ...data, name: newName } });
+    if (asNew) setKey(id);
+    setDraftName(newName);
     setNotice("Draft saved");
     loadDrafts();
   }
@@ -431,6 +450,7 @@ export function TransferForm({
   }
   function reset() {
     setKey(crypto.randomUUID());
+    setDraftName("");
     setLines([blank()]);
     setSuccess(null);
     setNotice("");
@@ -583,6 +603,7 @@ export function TransferForm({
                     className="flex-1 justify-start"
                     onClick={() => {
                       setKey(d.id);
+                      setDraftName(d.data.name ?? "");
                       if (own.length !== 1) setSource(d.data.sourceId);
                       setDestination(d.data.destinationId);
                       setDate(d.data.date);
@@ -619,31 +640,31 @@ export function TransferForm({
         </span>
         <div className="grid grid-cols-2 gap-2 md:flex">
           {drafts.some((d) => d.id === key) && (
-            <Button
-              variant="danger"
-              className="col-span-2"
-              disabled={busy}
-              onClick={() =>
-                setDeleting(drafts.find((d) => d.id === key) ?? null)
-              }
-            >
-              <Trash2 size={16} />
-              {t("Delete draft")}
-            </Button>
+            <>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() =>
+                  setDeleting(drafts.find((d) => d.id === key) ?? null)
+                }
+              >
+                <Trash2 size={16} />
+                {t("Delete draft")}
+              </Button>
+              {/* A blank form; the saved drafts stay in the list. */}
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  reset();
+                  setDestination("");
+                }}
+              >
+                <Plus size={16} />
+                {t("New draft")}
+              </Button>
+            </>
           )}
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await save();
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
+          <Button disabled={busy} onClick={() => setNaming(true)}>
             <Save size={16} />
             {t("Save draft")}
           </Button>
@@ -653,6 +674,25 @@ export function TransferForm({
           </Button>
         </div>
       </div>
+      {naming && (
+        <DraftNameDialog
+          initial={draftName || suggestedName}
+          existing={drafts.some((d) => d.id === key)}
+          busy={busy}
+          onClose={() => setNaming(false)}
+          onSave={async (newName, asNew) => {
+            setBusy(true);
+            try {
+              await save(asNew, newName);
+              setNaming(false);
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
       {deleting && (
         <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
           <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
@@ -1103,6 +1143,65 @@ function canSharePdf(file: File) {
   } catch {
     return false;
   }
+}
+// Names a draft when it is saved. An open saved draft can be updated or
+// kept as it was, with the form saved as a separate new draft.
+export function DraftNameDialog({
+  initial,
+  existing,
+  busy,
+  onSave,
+  onClose,
+}: {
+  initial: string;
+  existing: boolean;
+  busy: boolean;
+  onSave: (name: string, asNew: boolean) => void;
+  onClose: () => void;
+}) {
+  const { t } = useBuzz();
+  const [value, setValue] = useState(initial);
+  const name = value.trim().slice(0, 100);
+  return (
+    <Modal title="Save draft" onClose={() => !busy && onClose()}>
+      <Field label={t("Draft name")}>
+        <input
+          className={inputStyles}
+          data-initial-focus
+          dir="auto"
+          maxLength={100}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && name) onSave(name, false);
+          }}
+        />
+      </Field>
+      <p className="mt-2 mb-0 text-xs text-subtle">
+        {t("A name you will recognise in the saved drafts list.")}
+      </p>
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <Button disabled={busy} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        {existing && (
+          <Button disabled={busy || !name} onClick={() => onSave(name, true)}>
+            <Plus size={16} />
+            {t("Save as a new draft")}
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          className={cx(existing && "col-span-2")}
+          disabled={busy || !name}
+          onClick={() => onSave(name, false)}
+        >
+          <Save size={16} />
+          {t(existing ? "Update this draft" : "Save draft")}
+        </Button>
+      </div>
+    </Modal>
+  );
 }
 export function SuccessActions({
   transfer,

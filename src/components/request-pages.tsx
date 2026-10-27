@@ -37,6 +37,7 @@ import {
   table,
 } from "./ui";
 import {
+  DraftNameDialog,
   DuplicateDialog,
   ItemsCard,
   Modal,
@@ -60,6 +61,8 @@ type RequestDraftData = {
   supplierId: string;
   remarks: string;
   lines: Line[];
+  // What the person called the draft, to tell several apart.
+  name?: string;
 };
 type SavedRequestDraft = {
   id: string;
@@ -369,8 +372,17 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
       .catch((e) => setError(e.message));
     void loadDrafts();
   }, []);
-  const data: RequestDraftData = { requesterId, supplierId, remarks, lines };
+  const [draftName, setDraftName] = useState("");
+  const [naming, setNaming] = useState(false);
+  const data: RequestDraftData = {
+    requesterId,
+    supplierId,
+    remarks,
+    lines,
+    name: draftName,
+  };
   const fill = (d: RequestDraftData) => {
+    setDraftName(d.name ?? "");
     if (d.requesterId) setRequester(d.requesterId);
     setSupplier(d.supplierId ?? "");
     setRemarks(d.remarks ?? "");
@@ -394,8 +406,9 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
     },
   );
   const name = (id: string) => locations.find((l) => l.id === id)?.name;
+  const suggestedName = `${name(supplierId) ?? "—"} → ${name(requesterId) ?? "—"} · ${validLines.length} ${t("items")}`;
   const draftLabel = (d: SavedRequestDraft) =>
-    `${name(d.data.supplierId) ?? "—"} → ${name(d.data.requesterId) ?? "—"} · ${new Date(
+    `${d.data.name?.trim() || `${name(d.data.supplierId) ?? "—"} → ${name(d.data.requesterId) ?? "—"}`} · ${new Date(
       d.updatedAt,
     ).toLocaleString(dateLocale(locale), {
       day: "2-digit",
@@ -407,15 +420,22 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
   function startOver() {
     backup.clear();
     setDraftKey(crypto.randomUUID());
+    setDraftName("");
     setSupplier("");
     setRemarks("");
     setLines([{ id: crypto.randomUUID(), code: "", quantity: "", unit: "" }]);
   }
-  async function saveDraft() {
+  // Saves the form as its draft, or as a new draft so an open saved draft
+  // stays as it was.
+  async function saveDraft(newName: string, asNew: boolean) {
     setBusy(true);
     setError("");
     try {
-      await api("request-drafts", { id: draftKey, data });
+      const id = asNew ? crypto.randomUUID() : draftKey;
+      await api("request-drafts", { id, data: { ...data, name: newName } });
+      if (asNew) setDraftKey(id);
+      setDraftName(newName);
+      setNaming(false);
       toast(t("Draft saved"), "ok");
       void loadDrafts();
     } catch (e) {
@@ -609,7 +629,13 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
         )}
       </div>
       <div className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-2 gap-2 border-t border-line bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:mt-5 md:flex md:justify-end md:border-0 md:bg-transparent md:p-0">
-        <Button disabled={busy} onClick={saveDraft}>
+        {drafts.some((d) => d.id === draftKey) && (
+          <Button className="col-span-2" disabled={busy} onClick={startOver}>
+            <Plus size={16} />
+            {t("New draft")}
+          </Button>
+        )}
+        <Button disabled={busy} onClick={() => setNaming(true)}>
           <Save size={16} />
           {t("Save draft")}
         </Button>
@@ -618,6 +644,15 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
           {t(busy ? "Please wait…" : "Send request")}
         </Button>
       </div>
+      {naming && (
+        <DraftNameDialog
+          initial={draftName || suggestedName}
+          existing={drafts.some((d) => d.id === draftKey)}
+          busy={busy}
+          onClose={() => setNaming(false)}
+          onSave={(newName, asNew) => void saveDraft(newName, asNew)}
+        />
+      )}
       {deleting && (
         <Modal title="Delete draft" onClose={() => !busy && setDeleting(null)}>
           <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">

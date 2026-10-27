@@ -730,6 +730,12 @@ export const fa: Record<string, string> = {
   "Added item description": "شرح قلم اضافه‌شده",
   "Print original": "چاپ نسخهٔ اصلی",
   "Print current": "چاپ نسخهٔ فعلی",
+  "Draft name": "نام پیش‌نویس",
+  "A name you will recognise in the saved drafts list.":
+    "نامی که در فهرست پیش‌نویس‌ها آن را بشناسید.",
+  "Save as a new draft": "ذخیره به‌عنوان پیش‌نویس جدید",
+  "Update this draft": "به‌روزرسانی همین پیش‌نویس",
+  "New draft": "پیش‌نویس جدید",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;
