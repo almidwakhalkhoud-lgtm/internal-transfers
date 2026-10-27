@@ -807,6 +807,19 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
     .toBeGreaterThanOrEqual(2);
   await page.reload();
   await page.getByText(/^Saved drafts/).click();
+  // Each saved draft prints as the order form.
+  const printed = page.waitForRequest((r) =>
+    r.url().endsWith(`/api/drafts/${saved.id}/form`),
+  );
+  await page
+    .locator(`[data-draft="${saved.id}"]`)
+    .getByRole("button", { name: /^Print · Morning order · / })
+    .click();
+  await printed;
+  const form = await page.request.get(`/api/drafts/${saved.id}/form`);
+  expect(form.headers()["content-type"]).toBe("application/pdf");
+  mkdirSync("output/qa", { recursive: true });
+  writeFileSync("output/qa/transfer-draft-form.pdf", await form.body());
   await page
     .locator(`[data-draft="${saved.id}"]`)
     .getByRole("button", { name: /^Open draft · Morning order · / })
@@ -1864,6 +1877,17 @@ test("a request survives a reload on the device and can be saved as a draft", as
   await page.getByRole("button", { name: "Start over", exact: true }).click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
   await page.getByText(/^Saved drafts/).click();
+  const draftForm = await page.request.get(
+    `/api/request-drafts/${draft.id}/form`,
+  );
+  expect(draftForm.headers()["content-type"]).toBe("application/pdf");
+  mkdirSync("output/qa", { recursive: true });
+  writeFileSync("output/qa/request-draft-form.pdf", await draftForm.body());
+  await expect(
+    page
+      .locator(`[data-draft="${draft.id}"]`)
+      .getByRole("button", { name: /^Print · Weekly cigarettes · / }),
+  ).toBeVisible();
   await page
     .locator(`[data-draft="${draft.id}"]`)
     .getByRole("button", { name: /^Open draft · Weekly cigarettes · / })

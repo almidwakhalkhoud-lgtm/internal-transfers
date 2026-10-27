@@ -240,7 +240,7 @@ export async function generatePdf(t: DocumentData) {
 }
 export type OrderFormData = {
   // ORIGINAL: as the requester sent it. CURRENT: with the source's changes.
-  version: "ORIGINAL" | "CURRENT";
+  version: "ORIGINAL" | "CURRENT" | "DRAFT";
   number: string;
   creatorName: string;
   supplier: string;

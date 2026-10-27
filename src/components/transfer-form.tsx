@@ -6,6 +6,7 @@ import Link from "next/link";
 import { DatePicker } from "./date-picker";
 import { Modal } from "./modal";
 import { useFormBackup } from "./form-backup";
+import { PdfPrintButton } from "./pdf-print";
 export { Modal } from "./modal";
 import {
   useState,
@@ -614,6 +615,12 @@ export function TransferForm({
                   >
                     {t("Open draft")} · {draftLabel(d)}
                   </Button>
+                  <PdfPrintButton
+                    iconOnly
+                    url={`/api/drafts/${d.id}/form`}
+                    fileName={`${d.data.name?.trim() || "draft"}.pdf`}
+                    label={`${t("Print")} · ${draftLabel(d)}`}
+                  />
                   <button
                     type="button"
                     className={cx(

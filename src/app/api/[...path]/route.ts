@@ -20,6 +20,7 @@ import {
   canSupply,
   identifier,
   numberFor,
+  renamable,
   signableSides,
   signaturePng,
   signatureSides,
@@ -150,6 +151,59 @@ function signatureView(s: {
     signedAt: s.signedAt,
     image: `data:image/png;base64,${Buffer.from(s.image).toString("base64")}`,
   };
+}
+// A saved draft (transfer or request) as the order form: its items with the
+// quantity and unit entered, the source columns blank, and the draft's name
+// where the number goes, as a draft has none yet.
+async function draftOrderForm(
+  user: { name: string },
+  draft: { updatedAt: Date; data: Prisma.JsonValue },
+  route: (data: Record<string, unknown>) => { from: unknown; to: unknown },
+) {
+  const data = (draft.data ?? {}) as Record<string, unknown>;
+  const { from, to } = route(data);
+  const places = await db.location.findMany({
+    where: {
+      id: { in: [from, to].filter((v): v is string => typeof v === "string") },
+    },
+  });
+  const place = (id: unknown) => places.find((l) => l.id === id)?.name ?? "—";
+  type DraftLine = {
+    quantity?: string;
+    unit?: string;
+    note?: string;
+    description?: string;
+    product?: { code: string; description: string };
+  };
+  const lines = ((data.lines as DraftLine[]) ?? [])
+    .filter((l) => l.product)
+    .map((l) => ({
+      code: l.product!.code,
+      description: renamable(l.product!.code)
+        ? l.description?.trim() || l.product!.description
+        : l.product!.description,
+      quantity: l.quantity ?? "",
+      unit: l.unit ?? "",
+      note: l.note?.trim() || undefined,
+    }));
+  const name = typeof data.name === "string" && data.name.trim();
+  const pdf = await orderFormPdf({
+    version: "DRAFT",
+    number: name || "DRAFT",
+    creatorName: user.name,
+    supplier: place(from),
+    requester: place(to),
+    createdAt: draft.updatedAt,
+    remarks: typeof data.remarks === "string" ? data.remarks : "",
+    lines,
+  });
+  return new NextResponse(new Uint8Array(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="draft.pdf"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
 }
 async function handle(
   req: NextRequest,
@@ -626,6 +680,16 @@ async function handle(
         return NextResponse.json(draft);
       }
     }
+    const draftForm = path.match(/^drafts\/([^/]+)\/form$/);
+    if (draftForm && method === "GET") {
+      const draft = await db.draft.findUnique({ where: { id: draftForm[1] } });
+      if (!draft || draft.userId !== user.id)
+        throw new HttpError(404, "Draft not found");
+      return draftOrderForm(user, draft, (d) => ({
+        from: d.sourceId,
+        to: d.destinationId,
+      }));
+    }
     const draftMatch = path.match(/^drafts\/([^/]+)$/);
     if (draftMatch && method === "DELETE") {
       await db.$transaction(async (tx) => {
@@ -760,6 +824,18 @@ async function handle(
               }),
         );
       }
+    }
+    const requestDraftForm = path.match(/^request-drafts\/([^/]+)\/form$/);
+    if (requestDraftForm && method === "GET") {
+      const draft = await db.requestDraft.findUnique({
+        where: { id: requestDraftForm[1] },
+      });
+      if (!draft || draft.userId !== user.id)
+        throw new HttpError(404, "Draft not found");
+      return draftOrderForm(user, draft, (d) => ({
+        from: d.supplierId,
+        to: d.requesterId,
+      }));
     }
     const requestDraft = path.match(/^request-drafts\/([^/]+)$/);
     if (requestDraft && method === "DELETE") {
