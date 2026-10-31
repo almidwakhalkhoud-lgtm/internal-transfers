@@ -42,6 +42,11 @@ const select = {
   total: true,
   lines: true,
   qbmEntry: { select: { reference: true, enteredAt: true } },
+  // Who signed, never the signature image: the QBM program shows the count.
+  signatures: {
+    select: { side: true, signerName: true, signedAt: true },
+    orderBy: { signedAt: "asc" },
+  },
 } satisfies Prisma.TransferSelect;
 function shape(t: Prisma.TransferGetPayload<{ select: typeof select }>) {
   return {
@@ -60,6 +65,11 @@ function shape(t: Prisma.TransferGetPayload<{ select: typeof select }>) {
           enteredAt: t.qbmEntry.enteredAt.toISOString(),
         }
       : null,
+    signatures: t.signatures.map((s) => ({
+      side: s.side,
+      signerName: s.signerName,
+      signedAt: s.signedAt.toISOString(),
+    })),
     // Item notes stay in BUZZ; QBM only needs what is typed into its grid.
     items: (t.lines as SnapshotLine[]).map((l) => ({
       code: l.code,
