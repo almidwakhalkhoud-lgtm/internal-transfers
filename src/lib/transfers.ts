@@ -214,7 +214,7 @@ export async function transferPdf(user: User | null, id: string) {
   // apart from the saved PDF, which stays as it was at confirmation.
   // The leading layout version rebuilds signed PDFs when their layout changes.
   const signedFor = t.signatures.length
-    ? `5:${t.signatures.map((s) => s.id).join(",")}`
+    ? `6:${t.signatures.map((s) => s.id).join(",")}`
     : "";
   if (signedFor && t.signedPdf && t.signedPdfFor === signedFor)
     return { t, buffer: Buffer.from(t.signedPdf) };

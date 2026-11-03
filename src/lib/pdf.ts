@@ -2,7 +2,7 @@ import type { Browser } from "playwright";
 import bwipjs from "bwip-js/node";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { SnapshotLine } from "./domain";
+import { groupDigits, type SnapshotLine } from "./domain";
 const esc = (value: unknown) =>
   String(value).replace(
     /[&<>"']/g,
@@ -89,7 +89,7 @@ export async function documentHtml(t: DocumentData) {
             backgroundcolor: "FFFFFF",
           })
         : null;
-      return `<tr><td>${esc(l.code)}${barcode ? `<img class="barcode" alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td><div dir="auto">${esc(l.description)}</div>${code ? `<div>${esc(code)}</div>` : ""}</td><td class="fit">${esc(l.quantity)}</td><td class="fit" dir="auto">${esc(l.unit)}</td></tr>`;
+      return `<tr><td>${esc(l.code)}${barcode ? `<img class="barcode" alt="${esc(code)}" src="data:image/png;base64,${barcode.toString("base64")}">` : ""}</td><td><div dir="auto">${esc(l.description)}</div>${code ? `<div>${esc(code)}</div>` : ""}</td><td class="fit">${esc(groupDigits(l.quantity))}</td><td class="fit" dir="auto">${esc(l.unit)}</td></tr>`;
     }),
   );
   const signature = (side: string, label: string) => {
@@ -129,7 +129,7 @@ tr.fill td{padding:0}
 .sign .name{position:absolute;left:6pt;bottom:4pt;max-width:100pt;overflow:hidden;white-space:nowrap;font-size:7.5pt}
 .sign .date{position:absolute;left:340pt;bottom:6pt}
 .sign .box{position:absolute;left:441pt;bottom:2pt;width:113.4pt;height:14.4pt;border:.72pt solid #000;text-align:center;line-height:13pt}
-</style></head><body><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody></table><div class="total">${esc(t.total)}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
+</style></head><body><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody></table><div class="total">${esc(groupDigits(t.total))}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
 }
 // Fit a long unit or quantity on one line, then stretch the table down to
 // the total and signatures on a one-page transfer, as QBM does.
@@ -274,7 +274,7 @@ export async function orderFormHtml(r: OrderFormData) {
   const rows = [
     ...r.lines.map(
       (l, i) =>
-        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}</td><td dir="ltr">${esc(l.quantity)}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td dir="ltr">${esc(l.sourceQty ?? "")}</td><td class="unit" dir="auto">${esc(l.sourceUnit ?? "")}</td><td class="note" dir="auto">${l.note ? esc(l.note) : ""}</td></tr>`,
+        `<tr><td class="c">${i + 1}</td><td dir="ltr">${esc(l.code)}</td><td class="c" dir="auto">${esc(l.description)}</td><td dir="ltr">${esc(groupDigits(l.quantity))}</td><td class="unit" dir="auto">${esc(l.unit)}</td><td dir="ltr">${esc(groupDigits(l.sourceQty ?? ""))}</td><td class="unit" dir="auto">${esc(l.sourceUnit ?? "")}</td><td class="note" dir="auto">${l.note ? esc(l.note) : ""}</td></tr>`,
     ),
     ...Array.from(
       { length: Math.max(30 - r.lines.length, 0) },

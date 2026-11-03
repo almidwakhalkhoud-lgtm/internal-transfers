@@ -118,6 +118,14 @@ export function totalQuantity(lines: { quantity: string }[]) {
     0n,
   );
 }
+// Thousands get a comma in printed quantities and totals (4970 → 4,970);
+// decimals stay as entered. Anything that is not a plain number is left as
+// it is, and item codes never go through here.
+export function groupDigits(value: string) {
+  const m = /^(-?)(\d+)(\.\d+)?$/.exec(value.trim());
+  if (!m) return value;
+  return m[1] + m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (m[3] ?? "");
+}
 export function formatTotal(total: bigint) {
   return `${total / 1000n}.${String(total % 1000n).padStart(3, "0")}`;
 }

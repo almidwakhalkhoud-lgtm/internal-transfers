@@ -14,6 +14,7 @@ import {
   unitsFromDescription,
   renamable,
   splitCatalog,
+  groupDigits,
   unneededConflicts,
   signableSides,
   signaturePng,
@@ -336,5 +337,15 @@ describe("conflict clean-up keeps only conflicts worth reviewing", () => {
     );
     expect(result.duplicates).toEqual(["old-copy"]);
     expect(result.unchanged.sort()).toEqual(["no-units", "same-units"]);
+  });
+});
+describe("printed quantities group thousands", () => {
+  it("adds commas to whole numbers and keeps decimals as entered", () => {
+    expect(groupDigits("4970")).toBe("4,970");
+    expect(groupDigits("1234567.125")).toBe("1,234,567.125");
+    expect(groupDigits("999")).toBe("999");
+    expect(groupDigits("2.625")).toBe("2.625");
+    expect(groupDigits("")).toBe("");
+    expect(groupDigits("abc")).toBe("abc");
   });
 });
