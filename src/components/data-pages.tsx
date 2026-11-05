@@ -857,6 +857,7 @@ export function DetailPage({ id }: { id: string }) {
           </Card>
           <SignaturesCard
             transferId={data.id}
+            number={data.number}
             source={data.source}
             destination={data.destination}
             signatures={data.signatures}

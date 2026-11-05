@@ -137,6 +137,12 @@ async function layoutScript(pageHeight: number) {
   // Crop each drawn signature to its ink so it fills its space, however
   // small it was drawn inside the signing box.
   for (const img of document.querySelectorAll<HTMLImageElement>(".sign img")) {
+    // An image that did not load (a damaged upload) is left as it is rather
+    // than stopping the whole PDF.
+    if (!img.complete || !img.naturalWidth) {
+      img.style.visibility = "hidden";
+      continue;
+    }
     const canvas = document.createElement("canvas");
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
@@ -176,7 +182,7 @@ async function layoutScript(pageHeight: number) {
         crop.height - pad * 2,
       );
     img.src = crop.toDataURL("image/png");
-    await img.decode();
+    await img.decode().catch(() => {});
   }
   for (const cell of document.querySelectorAll<HTMLElement>("td.fit")) {
     let size = 8.3;
@@ -237,6 +243,16 @@ export async function generatePdf(t: DocumentData) {
     await browser?.close();
     release();
   }
+}
+// Just the last page of a PDF: on a long transfer the signatures are there,
+// and a whole many-page document is too much to send for them.
+export async function lastPage(pdf: Uint8Array) {
+  const { PDFDocument } = await import("pdf-lib");
+  const source = await PDFDocument.load(pdf);
+  const out = await PDFDocument.create();
+  const [page] = await out.copyPages(source, [source.getPageCount() - 1]);
+  out.addPage(page);
+  return Buffer.from(await out.save());
 }
 export type OrderFormData = {
   // ORIGINAL: as the requester sent it. CURRENT: with the source's changes.

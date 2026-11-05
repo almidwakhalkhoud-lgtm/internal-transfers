@@ -58,7 +58,7 @@ import {
   notificationInbox,
   savePushSubscription,
 } from "@/lib/notifications";
-import { orderFormPdf } from "@/lib/pdf";
+import { lastPage, orderFormPdf } from "@/lib/pdf";
 import { runNotificationTick } from "@/lib/push-worker";
 import {
   getNotificationPolicy,
@@ -1016,10 +1016,13 @@ async function handle(
         throw new HttpError(403, "Transfer access denied");
       if (match[2] && method === "GET") {
         const { buffer } = await transferPdf(user, t.id);
-        return new NextResponse(new Uint8Array(buffer), {
+        // ?page=last: only the last page, where a long transfer is signed.
+        const last = req.nextUrl.searchParams.get("page") === "last";
+        const body = last ? await lastPage(buffer) : buffer;
+        return new NextResponse(new Uint8Array(body), {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `${req.nextUrl.searchParams.has("inline") ? "inline" : "attachment"}; filename="${t.number}.pdf"`,
+            "Content-Disposition": `${req.nextUrl.searchParams.has("inline") ? "inline" : "attachment"}; filename="${t.number}${last ? "-signed-page" : ""}.pdf"`,
             "Cache-Control": "private, no-store",
           },
         });

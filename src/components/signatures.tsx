@@ -6,6 +6,7 @@ import { api } from "@/lib/client";
 import { useBuzz } from "./shell";
 import { Modal } from "./modal";
 import { Badge, Button, Card } from "./ui";
+import { PdfPrintButton } from "./pdf-print";
 type Side = "SOURCE" | "DESTINATION";
 export type SignatureView = {
   id?: string;
@@ -54,6 +55,7 @@ export function SignatureBadge({
 // The sender and receiver boxes, used on the Sign page and transfer details.
 export function SignaturesCard({
   transferId,
+  number,
   source,
   destination,
   signatures,
@@ -61,6 +63,7 @@ export function SignaturesCard({
   onSigned,
 }: {
   transferId: string;
+  number?: string;
   source: string;
   destination: string;
   signatures: SignatureView[];
@@ -79,8 +82,18 @@ export function SignaturesCard({
   }, []);
   return (
     <Card id="signatures">
-      <div className="border-b border-line px-4 py-3 text-sm font-semibold md:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3 text-sm font-semibold md:px-5">
         {t("Signatures")}
+        {/* A long transfer is signed on its last page; this gives just that
+            page, in place of the whole document. */}
+        {number && signatures.length > 0 && (
+          <PdfPrintButton
+            download
+            url={`/api/transfers/${transferId}/pdf?page=last&signed=${signatures.length}`}
+            fileName={`${number}-signed-page.pdf`}
+            label={t("Download signed page")}
+          />
+        )}
       </div>
       <div className="grid gap-px bg-line sm:grid-cols-2">
         {(["SOURCE", "DESTINATION"] as const).map((side) => {

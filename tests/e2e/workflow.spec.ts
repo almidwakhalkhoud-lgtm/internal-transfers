@@ -2413,3 +2413,49 @@ test("ss is named per line in a new request and in items the supplier adds", asy
   ).toBe("Midwakh service");
   await supplierContext.close();
 });
+test("a long signed transfer offers just its last, signed page", async ({
+  page,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const lines = Array.from({ length: 60 }, (_, i) => ({
+    productId: p.id,
+    version: p.updatedAt.toISOString(),
+    quantity: String(i + 1),
+    unit: "",
+    duplicateAccepted: i > 0,
+  }));
+  const saved = await (
+    await post(page.request, "transfers", await draft(page.request, lines))
+  ).json();
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0,
+  ]).toString("base64");
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, {
+        side: "SOURCE",
+        image: `data:image/png;base64,${png}`,
+      })
+    ).ok(),
+  ).toBe(true);
+  const { PDFDocument } = await import("pdf-lib");
+  const pages = async (body: Buffer) =>
+    (await PDFDocument.load(body)).getPageCount();
+  const full = await page.request.get(`/api/transfers/${saved.id}/pdf`);
+  expect(await pages(await full.body())).toBeGreaterThan(1);
+  await page.goto(`/transfers/${saved.id}`);
+  await page.waitForLoadState("networkidle");
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download signed page", exact: true })
+    .click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`${saved.number}-signed-page.pdf`);
+  const body = readFileSync(await file.path());
+  expect(await pages(body)).toBe(1);
+  mkdirSync("output/qa", { recursive: true });
+  writeFileSync("output/qa/signed-last-page.pdf", body);
+});

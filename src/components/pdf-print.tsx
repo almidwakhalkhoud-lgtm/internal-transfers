@@ -15,12 +15,15 @@ export function PdfPrintButton({
   label,
   body,
   iconOnly = false,
+  download = false,
 }: {
   url: string;
   fileName: string;
   label: string;
   body?: unknown;
   iconOnly?: boolean;
+  // Save the file on a computer instead of opening it in a tab.
+  download?: boolean;
 }) {
   const { t, toast } = useBuzz();
   const [ready, setReady] = useState<{ key: string; file: File } | null>(null);
@@ -28,7 +31,7 @@ export function PdfPrintButton({
   const key = `${url}|${JSON.stringify(body ?? null)}`;
   async function print() {
     const mobile = isMobileDevice();
-    const tab = mobile ? null : window.open("", "_blank");
+    const tab = mobile || download ? null : window.open("", "_blank");
     tab?.document.write(
       `<p style="font:16px sans-serif">${t("Preparing PDF…")}</p>`,
     );

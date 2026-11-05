@@ -736,6 +736,7 @@ export const fa: Record<string, string> = {
   "Save as a new draft": "ذخیره به‌عنوان پیش‌نویس جدید",
   "Update this draft": "به‌روزرسانی همین پیش‌نویس",
   "New draft": "پیش‌نویس جدید",
+  "Download signed page": "دانلود صفحهٔ امضاشده",
 };
 export function translate(locale: Locale, key: string): string {
   if (locale === "en") return key;
