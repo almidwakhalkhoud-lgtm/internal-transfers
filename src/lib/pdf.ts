@@ -67,7 +67,8 @@ function signedTime(value: Date) {
 }
 // The page copies the QBM transfer printout: US Letter, the same field and
 // column positions (in points, measured from a QBM PDF), centered cells and a
-// table that runs down to the total and the two signature rows.
+// table that runs down to the total and the two signature rows. The header
+// block sits in the table's repeating heading, so every page carries it.
 export async function documentHtml(t: DocumentData) {
   const [yekan, arimo] = await Promise.all(
     ["YekanBakh-Regular.woff2", "Arimo-Regular.woff2"].map((name) =>
@@ -112,7 +113,11 @@ body{width:554.4pt;font:8.3pt/1.15 Arimo,Yekan,sans-serif;color:#000}
 h1{position:absolute;inset:0 0 auto;margin:0;font-size:18pt;font-weight:normal;line-height:1.2;text-align:center}
 .at{position:absolute;white-space:nowrap}
 .remarks{position:absolute;left:52.6pt;top:108.7pt;width:293pt;height:21.6pt;border:.72pt solid #000;padding:2pt 4pt;overflow:hidden}
-table{width:100%;border-collapse:collapse;table-layout:fixed;border:.72pt solid #000}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th.head-cell{border:none;padding:0;height:auto;font-size:8.3pt;text-align:left}
+tbody tr:last-child td{border-bottom:.72pt solid #000}
+tfoot{display:table-footer-group}
+td.foot{border:none;border-top:.72pt solid #000;padding:0;height:0}
 thead{display:table-header-group}
 th{font-size:9pt;font-weight:normal;height:13pt;padding:0 2pt;border:.72pt solid #000}
 td{padding:1.6pt 3pt;border-left:.72pt solid #000;border-right:.72pt solid #000;text-align:center;vertical-align:middle;overflow-wrap:anywhere}
@@ -129,7 +134,7 @@ tr.fill td{padding:0}
 .sign .name{position:absolute;left:6pt;bottom:4pt;max-width:100pt;overflow:hidden;white-space:nowrap;font-size:7.5pt}
 .sign .date{position:absolute;left:340pt;bottom:6pt}
 .sign .box{position:absolute;left:441pt;bottom:2pt;width:113.4pt;height:14.4pt;border:.72pt solid #000;text-align:center;line-height:13pt}
-</style></head><body><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody></table><div class="total">${esc(groupDigits(t.total))}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
+</style></head><body><table><colgroup><col style="width:139pt"><col style="width:288pt"><col style="width:77pt"><col style="width:50.4pt"></colgroup><thead><tr><th colspan="4" class="head-cell"><div class="head"><h1>MEHDI ALI TRADING Co.</h1>${at(416, 54, qbmDate(t.date))}${at(416, 69, t.number)}${at(421, 97, "Confirmed")}${at(82, 78, t.source)}${at(82, 95, t.destination)}<div class="remarks" dir="auto">${esc(t.remarks)}</div></div></th></tr><tr><th>Item</th><th>Description</th><th>Quantity</th><th>Unit</th></tr></thead><tbody>${rows.join("")}<tr class="fill"><td></td><td></td><td></td><td></td></tr></tbody><tfoot><tr><td colspan="4" class="foot"></td></tr></tfoot></table><div class="total">${esc(groupDigits(t.total))}</div>${signature("SOURCE", "Signature of Sender")}${signature("DESTINATION", "Signature of Receiver")}</body></html>`;
 }
 // Fit a long unit or quantity on one line, then stretch the table down to
 // the total and signatures on a one-page transfer, as QBM does.
