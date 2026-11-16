@@ -1726,6 +1726,232 @@ test("drafts take no number, the latest deleted number comes back and admins can
   ).rejects.toThrow();
   await adminContext.close();
 });
+test("admins edit a confirmed transfer, signatures are redone and the QBM program sees the edit", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const withUnit = await db.product.findUniqueOrThrow({
+    where: { id: "real-unit" },
+  });
+  const noUnit = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const saved = await (
+    await post(
+      page.request,
+      "transfers",
+      await draft(page.request, [
+        {
+          productId: withUnit.id,
+          version: withUnit.updatedAt.toISOString(),
+          quantity: "2",
+          unit: withUnit.units[0],
+        },
+      ]),
+    )
+  ).json();
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0,
+  ]).toString("base64");
+  expect(
+    (
+      await post(page.request, `sign/${saved.id}`, {
+        side: "SOURCE",
+        image: `data:image/png;base64,${png}`,
+      })
+    ).ok(),
+  ).toBe(true);
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  // The QBM program enters the transfer as it was confirmed.
+  const { key } = await (
+    await post(admin.request, "api-keys", {
+      name: "Edit test",
+      canApprove: true,
+    })
+  ).json();
+  const program = { Authorization: `Bearer ${key}` };
+  const v1 = (path: string, method = "GET", data?: unknown) =>
+    admin.request.fetch(`/api/v1/transfers${path}`, {
+      method,
+      headers: program,
+      data,
+    });
+  expect(
+    (await v1(`/${saved.number}/qbm`, "POST", { reference: "QBM-77" })).ok(),
+  ).toBe(true);
+  // Staff may not edit.
+  const edit = (who: Page, data: unknown) =>
+    who.request.patch(`/api/transfers/${saved.id}`, {
+      data,
+      headers: { Origin: origin },
+    });
+  const body = {
+    revision: 1,
+    date: "2026-11-10",
+    remarks: "",
+    lines: [{ original: 0, code: withUnit.code, quantity: "4", unit: "" }],
+  };
+  expect((await edit(page, body)).status()).toBe(403);
+  // Through the page: one quantity changed and one item added.
+  await admin.goto(`/transfers/${saved.id}`);
+  await admin.getByRole("button", { name: "Edit transfer" }).click();
+  const modal = admin.getByRole("dialog");
+  await expect(modal.getByText("The signatures are removed")).toBeVisible();
+  await modal.getByLabel("Quantity 1").fill("4");
+  await modal.getByLabel("Add item by code").fill(noUnit.code);
+  await modal.getByRole("button", { name: "Add", exact: true }).click();
+  await modal.getByLabel("Quantity 2").fill("3");
+  await modal.getByLabel("Reason for the edit (optional)").fill("Recounted");
+  await modal.getByRole("button", { name: "Save changes" }).click();
+  await expect(admin.getByText("Edited (revision 2)")).toBeVisible();
+  await expect(admin.getByText("Edited after QBM entry")).toBeVisible();
+  await expect(
+    admin.getByRole("heading", { name: "Edit history" }),
+  ).toBeVisible();
+  const edited = await db.transfer.findUniqueOrThrow({
+    where: { id: saved.id },
+    include: { signatures: true, revisions: true },
+  });
+  expect(edited.revision).toBe(2);
+  expect(edited.total.toString()).toBe("7");
+  expect(
+    (edited.lines as { code: string; quantity: string }[]).map((l) => [
+      l.code,
+      l.quantity,
+    ]),
+  ).toEqual([
+    [withUnit.code, "4"],
+    [noUnit.code, "3"],
+  ]);
+  expect(edited.signatures).toHaveLength(0);
+  expect(edited.revisions).toHaveLength(1);
+  expect(edited.revisions[0].revision).toBe(1);
+  expect(edited.revisions[0].reason).toBe("Recounted");
+  expect(edited.revisions[0].signatures).toHaveLength(1);
+  expect(
+    await db.audit.count({
+      where: { action: "TRANSFER_EDITED", target: saved.id },
+    }),
+  ).toBe(1);
+  // An edit of the revision someone else already replaced is refused.
+  expect((await edit(admin, body)).status()).toBe(409);
+  // The PDF is made again from the edited content.
+  expect((await admin.request.get(`/api/transfers/${saved.id}/pdf`)).ok()).toBe(
+    true,
+  );
+  expect(
+    (await db.transfer.findUniqueOrThrow({ where: { id: saved.id } })).pdfHash,
+  ).not.toBe(null);
+  // The QBM program sees the edit, must re-enter it before approving, and
+  // the transfer then leaves the outdated list.
+  const shown = await (await v1(`/${saved.number}`)).json();
+  expect(shown.revision).toBe(2);
+  expect(shown.editReason).toBe("Recounted");
+  expect(shown.qbm).toMatchObject({ revision: 1, outdated: true });
+  expect(shown.signatures).toHaveLength(0);
+  expect(shown.items).toHaveLength(2);
+  const outdated = async () =>
+    (
+      (await (await v1("?entered=outdated")).json()) as {
+        items: { id: string }[];
+      }
+    ).items.map((t) => t.id);
+  expect(await outdated()).toContain(saved.id);
+  expect((await v1(`/${saved.number}/approve`, "POST")).status()).toBe(409);
+  const reentered = await (
+    await v1(`/${saved.number}/qbm`, "POST", { reference: "QBM-78" })
+  ).json();
+  expect(reentered.qbm).toMatchObject({
+    reference: "QBM-78",
+    revision: 2,
+    outdated: false,
+  });
+  expect(await outdated()).not.toContain(saved.id);
+  expect((await v1(`/${saved.number}/approve`, "POST")).ok()).toBe(true);
+  // The database still refuses edits and history changes made any other way.
+  await expect(
+    db.transfer.update({
+      where: { id: saved.id },
+      data: { remarks: "changed directly" },
+    }),
+  ).rejects.toThrow();
+  await expect(
+    db.transferRevision.deleteMany({ where: { transferId: saved.id } }),
+  ).rejects.toThrow();
+  await adminContext.close();
+});
+test("only admins remove a signature, which is audited and can be signed again", async ({
+  page,
+  browser,
+}) => {
+  await login(page);
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const saved = await (
+    await post(
+      page.request,
+      "transfers",
+      await draft(page.request, [
+        {
+          productId: p.id,
+          version: p.updatedAt.toISOString(),
+          quantity: "1",
+          unit: "",
+        },
+      ]),
+    )
+  ).json();
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0,
+  ]).toString("base64");
+  const sign = () =>
+    post(page.request, `sign/${saved.id}`, {
+      side: "SOURCE",
+      image: `data:image/png;base64,${png}`,
+    });
+  expect((await sign()).ok()).toBe(true);
+  const remove = (who: Page) =>
+    who.request.delete(`/api/sign/${saved.id}`, {
+      data: { side: "SOURCE" },
+      headers: { Origin: origin },
+    });
+  // Staff may not remove a signature, not even their own.
+  expect((await remove(page)).status()).toBe(403);
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin@buzz.test");
+  await admin.goto(`/transfers/${saved.id}`);
+  await admin
+    .getByRole("button", { name: "Remove signature · Sender signature" })
+    .click();
+  const modal = admin.getByRole("dialog");
+  await modal.getByLabel("Reason (optional)").fill("Wrong person signed");
+  await modal.getByRole("button", { name: "Remove signature" }).click();
+  await expect(
+    admin.getByRole("button", { name: "Sign as sender" }),
+  ).toBeVisible();
+  expect(await db.signature.count({ where: { transferId: saved.id } })).toBe(0);
+  const entry = await db.audit.findFirstOrThrow({
+    where: { action: "SIGNATURE_REMOVED", target: saved.id },
+  });
+  expect(entry.detail).toMatchObject({
+    side: "SOURCE",
+    reason: "Wrong person signed",
+    signerName: expect.any(String),
+  });
+  // Nothing left to remove; the side can be signed again.
+  expect((await remove(admin)).status()).toBe(404);
+  expect((await sign()).ok()).toBe(true);
+  // The database still refuses a signature removed any other way.
+  await expect(
+    db.signature.deleteMany({ where: { transferId: saved.id } }),
+  ).rejects.toThrow();
+  await adminContext.close();
+});
 test("view-only locations show transfers without signing, and a per-user exception signs both sides", async ({
   page,
   browser,

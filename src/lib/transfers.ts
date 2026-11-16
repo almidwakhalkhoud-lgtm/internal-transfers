@@ -9,6 +9,8 @@ import {
   numberFor,
   routeCode,
   renamable,
+  transferEditInput,
+  editedLines,
   type SnapshotLine,
 } from "./domain";
 import { generatePdf } from "./pdf";
@@ -199,6 +201,126 @@ async function confirmOnce(user: User, input: unknown) {
     throw e;
   }
 }
+// An administrator edits a confirmed transfer. In one transaction the
+// replaced version is kept (with the PDF people downloaded, signatures
+// included), the signatures that approved it are removed, the revision goes
+// up and the PDF is cleared so it is made again from the edited content.
+export async function editTransfer(user: User, id: string, input: unknown) {
+  if (user.role !== "ADMIN")
+    throw new HttpError(403, "Administrator access required");
+  const parsed = transferEditInput.safeParse(input);
+  if (!parsed.success)
+    throw new HttpError(
+      400,
+      parsed.error.issues.map((i) => i.message).join("; "),
+    );
+  const data = parsed.data;
+  return db.$transaction(async (tx) => {
+    const t = await tx.transfer.findUnique({
+      where: { id },
+      include: { signatures: { orderBy: { signedAt: "asc" } } },
+    });
+    if (!t) throw new HttpError(404, "Transfer not found");
+    if (t.revision !== data.revision)
+      throw new HttpError(409, "Transfer changed. Refresh and retry.");
+    const old = t.lines as SnapshotLine[];
+    const found = await tx.product.findMany({
+      where: { code: { in: [...new Set(data.lines.map((l) => l.code))] } },
+      include: { barcodes: true },
+    });
+    const products = new Map(
+      found.map((p) => [
+        p.code,
+        { ...p, barcodes: p.barcodes.map((b) => b.value) },
+      ]),
+    );
+    const built = editedLines(data.lines, old, products);
+    if ("error" in built) throw new HttpError(409, built.error);
+    const { lines } = built;
+    const date = new Date(data.date);
+    if (
+      JSON.stringify(lines) === JSON.stringify(old) &&
+      date.getTime() === t.date.getTime() &&
+      data.remarks === t.remarks
+    )
+      throw new HttpError(400, "Nothing was changed");
+    const total = formatTotal(totalQuantity(lines));
+    const signatures = t.signatures.map((s) => ({
+      side: s.side,
+      userId: s.userId,
+      signerName: s.signerName,
+      signedAt: s.signedAt.toISOString(),
+    }));
+    const keptPdf = t.signedPdf ?? t.pdf;
+    await tx.transferRevision.create({
+      data: {
+        transferId: t.id,
+        revision: t.revision,
+        date: t.date,
+        remarks: t.remarks,
+        lines: old,
+        total: t.total,
+        pdf: keptPdf,
+        pdfHash: keptPdf ? hash(Buffer.from(keptPdf)) : null,
+        signatures,
+        editedById: user.id,
+        editedByName: user.name,
+        reason: data.reason,
+      },
+    });
+    // The guard triggers let the content change, the saved PDF be cleared
+    // and the signatures go only after this opt-in.
+    await tx.$queryRaw`SELECT set_config('buzz.transfer_edit', 'allowed', true)`;
+    if (signatures.length)
+      await tx.signature.deleteMany({ where: { transferId: t.id } });
+    const result = await tx.transfer.updateMany({
+      where: { id: t.id, revision: t.revision },
+      data: {
+        date,
+        remarks: data.remarks,
+        lines,
+        total,
+        revision: t.revision + 1,
+        editedAt: new Date(),
+        editedById: user.id,
+        editedByName: user.name,
+        pdf: null,
+        pdfHash: null,
+        pdfError: false,
+        signedPdf: null,
+        signedPdfFor: null,
+      },
+    });
+    if (result.count !== 1)
+      throw new HttpError(409, "Transfer changed. Refresh and retry.");
+    await tx.audit.create({
+      data: {
+        actor: user.id,
+        action: "TRANSFER_EDITED",
+        target: t.id,
+        detail: {
+          number: t.number,
+          revision: t.revision + 1,
+          reason: data.reason,
+          signaturesRemoved: signatures.length,
+          before: {
+            date: t.date.toISOString(),
+            remarks: t.remarks,
+            total: t.total.toString(),
+            lines: old,
+          },
+          after: {
+            date: date.toISOString(),
+            remarks: data.remarks,
+            total,
+            lines,
+          },
+        },
+      },
+    });
+    return { revision: t.revision + 1 };
+  });
+}
 const generating = new Map<string, Promise<Buffer>>();
 // `user` is null for an API key: it may already list and read every
 // transfer, so it may read their PDFs too (the QBM program archives them).
@@ -219,7 +341,9 @@ export async function transferPdf(user: User | null, id: string) {
   if (signedFor && t.signedPdf && t.signedPdfFor === signedFor)
     return { t, buffer: Buffer.from(t.signedPdf) };
   if (!signedFor && t.pdf) return { t, buffer: Buffer.from(t.pdf) };
-  const jobKey = `${id}:${signedFor}`;
+  // The revision is part of the key: a PDF of a version an edit replaced
+  // while it was being made is never saved over the edited one.
+  const jobKey = `${id}:${t.revision}:${signedFor}`;
   let job = generating.get(jobKey);
   if (!job) {
     job = (async () => {
@@ -237,8 +361,8 @@ export async function transferPdf(user: User | null, id: string) {
           })),
         });
         if (signedFor) {
-          await db.transfer.update({
-            where: { id },
+          await db.transfer.updateMany({
+            where: { id, revision: t.revision },
             data: {
               signedPdf: new Uint8Array(buffer),
               signedPdfFor: signedFor,
@@ -246,22 +370,30 @@ export async function transferPdf(user: User | null, id: string) {
           });
           return buffer;
         }
-        await db.transfer.updateMany({
-          where: { id, pdf: null },
+        const saved = await db.transfer.updateMany({
+          where: { id, pdf: null, revision: t.revision },
           data: {
             pdf: new Uint8Array(buffer),
             pdfHash: hash(buffer),
             pdfError: false,
           },
         });
-        const saved = await db.transfer.findUniqueOrThrow({
+        // Another download may have saved it first; then that one is the
+        // PDF. If an edit came meanwhile, hand back what was made: the next
+        // download makes the PDF of the edited version.
+        const stored = await db.transfer.findUniqueOrThrow({
           where: { id },
-          select: { pdf: true },
+          select: { pdf: true, revision: true },
         });
-        return Buffer.from(saved.pdf!);
+        return saved.count || stored.revision === t.revision
+          ? Buffer.from(stored.pdf ?? buffer)
+          : buffer;
       } catch (e) {
         if (!signedFor)
-          await db.transfer.update({ where: { id }, data: { pdfError: true } });
+          await db.transfer.updateMany({
+            where: { id, revision: t.revision },
+            data: { pdfError: true },
+          });
         throw e;
       } finally {
         generating.delete(jobKey);

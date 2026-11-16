@@ -22,7 +22,9 @@ import {
   Trash2,
   Plus,
   Hash,
+  Pencil,
 } from "lucide-react";
+import { EditTransferModal } from "./transfer-edit";
 import { api } from "@/lib/client";
 import { hasMenu } from "@/lib/permissions";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
@@ -65,7 +67,8 @@ type Summary = {
   total: string;
   approval: string;
   creator: { name: string };
-  qbmEntry?: { reference: string; enteredAt: string } | null;
+  revision: number;
+  qbmEntry?: { reference: string; enteredAt: string; revision: number } | null;
   signatures?: { side: string; signerName: string }[];
   canSign?: ("SOURCE" | "DESTINATION")[];
 };
@@ -597,12 +600,34 @@ export function DetailPage({ id }: { id: string }) {
       request: { id: string; number: string } | null;
       signatures: SignatureView[];
       canSign: ("SOURCE" | "DESTINATION")[];
+      editedAt: string | null;
+      editedByName: string | null;
+      revisions: {
+        revision: number;
+        replacedAt: string;
+        editedByName: string;
+        reason: string;
+        total: string;
+        signers: string[];
+        hasPdf: boolean;
+      }[];
     }
   >(`transfers/${id}`);
+  const { locale } = useBuzz();
+  const when = (value: string) =>
+    new Date(value).toLocaleString(dateLocale(locale), {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Dubai",
+    });
   const [err, setErr] = useState("");
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [renumbering, setRenumbering] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   async function remove() {
@@ -640,8 +665,19 @@ export function DetailPage({ id }: { id: string }) {
               <span className="flex flex-wrap gap-1.5">
                 <Status value={data.approval} />
                 {data.qbmEntry && <QbmBadge entry={data.qbmEntry} />}
+                {data.qbmEntry && data.qbmEntry.revision < data.revision && (
+                  <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs whitespace-nowrap text-amber-800">
+                    {t("Edited after QBM entry")}
+                  </span>
+                )}
               </span>
             </div>
+            {data.editedAt && (
+              <p className="mt-2 mb-0 text-sm text-muted">
+                {t("Edited")} ({t("revision")} {data.revision}):{" "}
+                {data.editedByName} · {when(data.editedAt)}
+              </p>
+            )}
             <div className="mt-3 flex items-center gap-2 text-sm text-muted">
               <MapPin size={16} className="text-brand" />
               <span className="font-medium text-ink">{data.source}</span>
@@ -697,6 +733,13 @@ export function DetailPage({ id }: { id: string }) {
                 ))}
                 <Button
                   className="col-span-2 sm:ms-auto"
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil size={16} />
+                  {t("Edit transfer")}
+                </Button>
+                <Button
+                  className="col-span-2"
                   onClick={() => setRenumbering(true)}
                 >
                   <Hash size={16} />
@@ -716,6 +759,16 @@ export function DetailPage({ id }: { id: string }) {
               </div>
             )}
           </Card>
+          {editing && (
+            <EditTransferModal
+              transfer={data}
+              onClose={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                load();
+              }}
+            />
+          )}
           {renumbering && (
             <RenumberModal
               id={data.id}
@@ -866,10 +919,56 @@ export function DetailPage({ id }: { id: string }) {
           />
           <SuccessActions
             transfer={data}
-            version={[data.number, ...data.signatures.map((s) => s.side)].join(
-              ",",
-            )}
+            version={[
+              data.number,
+              data.revision,
+              ...data.signatures.map((s) => s.side),
+            ].join(",")}
           />
+          {data.revisions.length > 0 && (
+            <Card className="p-4 md:p-6">
+              <h3 className="m-0 mb-3 text-base font-semibold">
+                {t("Edit history")}
+              </h3>
+              <ul className="m-0 flex list-none flex-col gap-3 p-0">
+                {data.revisions.map((r) => (
+                  <li
+                    key={r.revision}
+                    className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-sm first:border-t-0 first:pt-0"
+                  >
+                    <span className="min-w-0">
+                      <strong className="text-ink">
+                        {t("revision")} {r.revision}
+                      </strong>{" "}
+                      · {t("Total quantity")}: {Number(r.total)}
+                      <small className="block text-xs text-subtle">
+                        {t("Replaced by")} {r.editedByName} ·{" "}
+                        {when(r.replacedAt)}
+                        {r.signers.length > 0 &&
+                          ` · ${t("Signed by")} ${r.signers.join("، ")}`}
+                      </small>
+                      {r.reason && (
+                        <small className="block text-xs text-muted" dir="auto">
+                          {r.reason}
+                        </small>
+                      )}
+                    </span>
+                    {r.hasPdf && (
+                      <a
+                        className={buttonStyles.secondary}
+                        href={`/api/transfers/${data.id}/revisions/${r.revision}/pdf?inline`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <FileText size={16} />
+                        PDF
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       )}
     </>

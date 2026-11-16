@@ -148,6 +148,80 @@ export function allowedTransition(from: string, to: string) {
     (from === "APPROVED" && to === "RECEIVED")
   );
 }
+// An administrator's edit of a confirmed transfer. `revision` is the one the
+// administrator edited, so a second edit made meanwhile is not overwritten.
+// A line with `original` keeps that line (its code, barcodes and name) and
+// changes its quantity, unit or note; a line without it adds a product.
+export const transferEditInput = z.object({
+  revision: z.number().int().positive(),
+  date: z.iso.date(),
+  remarks: z.string().max(2000),
+  reason: z.string().trim().max(500).default(""),
+  lines: z
+    .array(
+      z.object({
+        original: z.number().int().min(0).optional(),
+        code: z.string().trim().min(1).max(100),
+        quantity,
+        unit: z.string().max(100),
+        note: z.string().trim().max(500).optional(),
+        description: z.string().trim().min(1).max(2000).optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+export type TransferEditLine = z.infer<
+  typeof transferEditInput
+>["lines"][number];
+export type EditProduct = {
+  code: string;
+  description: string;
+  units: string[];
+  active: boolean;
+  barcodes: string[];
+};
+// Builds the edited snapshot with the same checks as confirmation: a unit
+// must be one of the product's (or the line's own, if the catalog dropped
+// it since), only "ss" may be renamed, and added products must be active.
+export function editedLines(
+  input: TransferEditLine[],
+  old: SnapshotLine[],
+  products: Map<string, EditProduct>,
+): { lines: SnapshotLine[] } | { error: string } {
+  const used = new Set<number>();
+  const lines: SnapshotLine[] = [];
+  for (const line of input) {
+    const before = line.original === undefined ? undefined : old[line.original];
+    if (line.original !== undefined) {
+      if (!before || before.code !== line.code)
+        return { error: "Transfer changed. Refresh and retry." };
+      if (used.has(line.original))
+        return { error: "Transfer changed. Refresh and retry." };
+      used.add(line.original);
+    }
+    const p = products.get(line.code);
+    if (!before && (!p || !p.active))
+      return { error: `Product ${line.code} is unavailable` };
+    if (
+      line.unit !== "" &&
+      line.unit !== before?.unit &&
+      !p?.units.includes(line.unit)
+    )
+      return { error: `Invalid unit for ${line.code}` };
+    if (line.description && !renamable(line.code))
+      return { error: `The name of ${line.code} cannot be changed` };
+    lines.push({
+      code: before?.code ?? p!.code,
+      description: line.description ?? before?.description ?? p!.description,
+      barcodes: before?.barcodes ?? p!.barcodes,
+      quantity: line.quantity,
+      unit: line.unit,
+      ...(line.note ? { note: line.note } : {}),
+    });
+  }
+  return { lines };
+}
 // A request is seen only by the person who made it, the people working at
 // the location it asks, and administrators. Only that location fills it.
 export function canSeeRequest(

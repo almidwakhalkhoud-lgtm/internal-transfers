@@ -30,7 +30,7 @@ import {
   type CatalogRow,
   type RequestLine,
 } from "@/lib/domain";
-import { confirmTransfer, transferPdf } from "@/lib/transfers";
+import { confirmTransfer, editTransfer, transferPdf } from "@/lib/transfers";
 import {
   closeRequest,
   createRequest,
@@ -109,7 +109,8 @@ const summary = {
   approval: true,
   confirmedAt: true,
   creator: { select: { name: true } },
-  qbmEntry: { select: { reference: true, enteredAt: true } },
+  revision: true,
+  qbmEntry: { select: { reference: true, enteredAt: true, revision: true } },
 };
 // Transfers at the viewer's locations whose side the viewer may still sign:
 // the same rule as signableSides, as a database filter.
@@ -1000,15 +1001,51 @@ async function handle(
         return NextResponse.json({ ok: true });
       }
     }
+    // A version an administrator edit replaced, as its PDF was then.
+    const old = path.match(/^transfers\/([^/]+)\/revisions\/(\d+)\/pdf$/);
+    if (old && method === "GET") {
+      const t = await db.transfer.findUnique({ where: { id: old[1] } });
+      if (!t) throw new HttpError(404, "Transfer not found");
+      if (!canAccess(user, t))
+        throw new HttpError(403, "Transfer access denied");
+      const r = await db.transferRevision.findUnique({
+        where: {
+          transferId_revision: { transferId: t.id, revision: Number(old[2]) },
+        },
+        select: { pdf: true, revision: true },
+      });
+      if (!r?.pdf) throw new HttpError(404, "PDF not found");
+      return new NextResponse(new Uint8Array(r.pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `${req.nextUrl.searchParams.has("inline") ? "inline" : "attachment"}; filename="${t.number}-rev${r.revision}.pdf"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     const match = path.match(/^transfers\/([^/]+)(\/pdf)?$/);
     if (match) {
       const t = await db.transfer.findUnique({
         where: { id: match[1] },
         include: {
           creator: { select: { name: true } },
-          qbmEntry: { select: { reference: true, enteredAt: true } },
+          qbmEntry: {
+            select: { reference: true, enteredAt: true, revision: true },
+          },
           request: { select: { id: true, number: true } },
           signatures: { orderBy: { signedAt: "asc" } },
+          revisions: {
+            orderBy: { revision: "desc" },
+            select: {
+              revision: true,
+              replacedAt: true,
+              editedByName: true,
+              reason: true,
+              total: true,
+              signatures: true,
+              pdfHash: true,
+            },
+          },
         },
       });
       if (!t) throw new HttpError(404, "Transfer not found");
@@ -1028,10 +1065,17 @@ async function handle(
         });
       }
       if (method === "GET") {
-        const { pdf, signatures, ...rest } = t;
+        const { pdf, signatures, revisions, ...rest } = t;
         return NextResponse.json({
           ...rest,
           signedPdf: undefined,
+          revisions: revisions.map(({ pdfHash, signatures, ...r }) => ({
+            ...r,
+            hasPdf: !!pdfHash,
+            signers: (signatures as { signerName: string }[]).map(
+              (s) => s.signerName,
+            ),
+          })),
           pdfReady: !!pdf,
           signatures: signatures.map(signatureView),
           canSign: signableSides(user, t),
@@ -1040,6 +1084,12 @@ async function handle(
       if (method === "PATCH") {
         await requireUser(true);
         const body = await req.json();
+        // An administrator corrects the items, date or remarks.
+        if (body && typeof body === "object" && "lines" in body)
+          return NextResponse.json({
+            ok: true,
+            ...(await editTransfer(user, t.id, body)),
+          });
         if (body && typeof body === "object" && "number" in body) {
           // An administrator brings a number back in step with QBM. The
           // route letters stay; only the counter part changes.
@@ -1236,6 +1286,47 @@ async function handle(
             throw new HttpError(409, "This side is already signed");
           throw e;
         }
+        return NextResponse.json({ ok: true });
+      }
+      // An administrator removes one side's signature so it is signed again.
+      // Who signed and when stay in the audit log; the image's hash too.
+      if (method === "DELETE") {
+        await requireUser(true);
+        const { side, reason } = z
+          .object({
+            side: z.enum(signatureSides),
+            reason: z.string().trim().max(500).default(""),
+          })
+          .parse(await req.json());
+        await db.$transaction(async (tx) => {
+          const s = await tx.signature.findUnique({
+            where: { transferId_side: { transferId: t.id, side } },
+          });
+          if (!s) throw new HttpError(404, "This side is not signed");
+          // The guard trigger lets a signature go only after this opt-in.
+          await tx.$queryRaw`SELECT set_config('buzz.signature_remove', 'allowed', true)`;
+          const result = await tx.signature.deleteMany({
+            where: { id: s.id },
+          });
+          if (result.count !== 1)
+            throw new HttpError(409, "Transfer changed. Refresh and retry.");
+          await tx.audit.create({
+            data: {
+              actor: user.id,
+              action: "SIGNATURE_REMOVED",
+              target: t.id,
+              detail: {
+                number: t.number,
+                side,
+                signerId: s.userId,
+                signerName: s.signerName,
+                signedAt: s.signedAt.toISOString(),
+                imageHash: hash(Buffer.from(s.image)),
+                reason,
+              },
+            },
+          });
+        });
         return NextResponse.json({ ok: true });
       }
     }
@@ -2077,9 +2168,26 @@ async function handle(
         { error: "This identifier is already in use" },
         { status: 409 },
       );
+    // Enough to trace the failure (code, model, field) without logging the
+    // message, which can echo entered values.
+    const known = e instanceof Prisma.PrismaClientKnownRequestError;
     console.error(
       "BUZZ request failed",
+      new Date().toISOString(),
+      req.method,
+      req.nextUrl.pathname,
       e instanceof Error ? e.name : "Unknown error",
+      ...(known
+        ? [
+            e.code,
+            JSON.stringify({
+              model: e.meta?.modelName,
+              target: e.meta?.target,
+              field: e.meta?.field_name,
+              cause: e.meta?.cause,
+            }),
+          ]
+        : []),
     );
     return NextResponse.json(
       {

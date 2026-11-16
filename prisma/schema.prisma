@@ -156,6 +156,12 @@ model Transfer {
   signedPdf     Bytes?
   signedPdfFor  String?
   notification  TransferNotification?
+  // Raised by each administrator edit; the replaced versions are kept.
+  revision      Int                   @default(1)
+  editedAt      DateTime?
+  editedById    String?
+  editedByName  String?
+  revisions     TransferRevision[]
 
   @@index([creatorId, confirmedAt])
   @@index([approval, confirmedAt])
@@ -242,6 +248,29 @@ model QbmEntry {
   enteredAt  DateTime @default(now())
   keyId      String
   key        ApiKey   @relation(fields: [keyId], references: [id])
+  // The transfer revision that was entered; lower means edited since.
+  revision   Int      @default(1)
+}
+// A version of a transfer that an administrator edit replaced, with the PDF
+// people downloaded then (signatures included) and who had signed it.
+model TransferRevision {
+  id           String   @id @default(cuid())
+  transferId   String
+  transfer     Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  revision     Int
+  date         DateTime
+  remarks      String
+  lines        Json
+  total        Decimal  @db.Decimal(20, 3)
+  pdf          Bytes?
+  pdfHash      String?
+  signatures   Json
+  replacedAt   DateTime @default(now())
+  editedById   String
+  editedByName String
+  reason       String   @default("")
+
+  @@unique([transferId, revision])
 }
 
 // A hand-drawn signature: one by someone at the source location (sender) and

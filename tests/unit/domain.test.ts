@@ -18,6 +18,8 @@ import {
   unneededConflicts,
   signableSides,
   signaturePng,
+  editedLines,
+  transferEditInput,
 } from "../../src/lib/domain";
 describe("exact product identifiers", () => {
   it("preserves zeros and internal spacing", () => {
@@ -347,5 +349,220 @@ describe("printed quantities group thousands", () => {
     expect(groupDigits("2.625")).toBe("2.625");
     expect(groupDigits("")).toBe("");
     expect(groupDigits("abc")).toBe("abc");
+  });
+});
+describe("administrator transfer edits", () => {
+  const old = [
+    {
+      code: "1066",
+      description: "STICK LIGHTER",
+      barcodes: ["629"],
+      quantity: "5",
+      unit: "PCS",
+      note: "blue",
+    },
+    {
+      code: "SS",
+      description: "midwakh service",
+      barcodes: [],
+      quantity: "2",
+      unit: "",
+    },
+  ];
+  const products = new Map([
+    [
+      "1066",
+      {
+        code: "1066",
+        description: "LIGHTER (renamed)",
+        units: ["CTN"],
+        active: true,
+        barcodes: ["999"],
+      },
+    ],
+    [
+      "SS",
+      {
+        code: "SS",
+        description: "service",
+        units: [],
+        active: true,
+        barcodes: [],
+      },
+    ],
+    [
+      "2000",
+      {
+        code: "2000",
+        description: "MATCHES",
+        units: ["BOX", "CTN"],
+        active: true,
+        barcodes: [],
+      },
+    ],
+    [
+      "3000",
+      {
+        code: "3000",
+        description: "OLD",
+        units: [],
+        active: false,
+        barcodes: [],
+      },
+    ],
+  ]);
+  it("keeps a line's snapshot and changes only its quantity, unit and note", () => {
+    const r = editedLines(
+      [{ original: 0, code: "1066", quantity: "7.5", unit: "PCS" }],
+      old,
+      products,
+    );
+    expect(r).toEqual({
+      lines: [
+        {
+          code: "1066",
+          description: "STICK LIGHTER",
+          barcodes: ["629"],
+          quantity: "7.5",
+          unit: "PCS",
+        },
+      ],
+    });
+  });
+  it("accepts the catalog's units and the line's own, nothing else", () => {
+    expect(
+      "lines" in
+        editedLines(
+          [{ original: 0, code: "1066", quantity: "1", unit: "CTN" }],
+          old,
+          products,
+        ),
+    ).toBe(true);
+    expect(
+      editedLines(
+        [{ original: 0, code: "1066", quantity: "1", unit: "BOX" }],
+        old,
+        products,
+      ),
+    ).toEqual({ error: "Invalid unit for 1066" });
+  });
+  it("adds active products from the catalog and refuses inactive or unknown ones", () => {
+    expect(
+      editedLines(
+        [{ code: "2000", quantity: "3", unit: "BOX" }],
+        old,
+        products,
+      ),
+    ).toEqual({
+      lines: [
+        {
+          code: "2000",
+          description: "MATCHES",
+          barcodes: [],
+          quantity: "3",
+          unit: "BOX",
+        },
+      ],
+    });
+    expect(
+      editedLines([{ code: "3000", quantity: "1", unit: "" }], old, products),
+    ).toEqual({
+      error: "Product 3000 is unavailable",
+    });
+    expect(
+      editedLines([{ code: "4000", quantity: "1", unit: "" }], old, products),
+    ).toEqual({
+      error: "Product 4000 is unavailable",
+    });
+  });
+  it("renames only the service line", () => {
+    expect(
+      editedLines(
+        [
+          {
+            original: 1,
+            code: "SS",
+            quantity: "2",
+            unit: "",
+            description: "polish",
+          },
+        ],
+        old,
+        products,
+      ),
+    ).toEqual({
+      lines: [
+        {
+          code: "SS",
+          description: "polish",
+          barcodes: [],
+          quantity: "2",
+          unit: "",
+        },
+      ],
+    });
+    expect(
+      editedLines(
+        [
+          {
+            original: 0,
+            code: "1066",
+            quantity: "2",
+            unit: "",
+            description: "x",
+          },
+        ],
+        old,
+        products,
+      ),
+    ).toEqual({ error: "The name of 1066 cannot be changed" });
+  });
+  it("refuses a stale or repeated reference to a confirmed line", () => {
+    const stale = { error: "Transfer changed. Refresh and retry." };
+    expect(
+      editedLines(
+        [{ original: 5, code: "1066", quantity: "1", unit: "" }],
+        old,
+        products,
+      ),
+    ).toEqual(stale);
+    expect(
+      editedLines(
+        [{ original: 1, code: "1066", quantity: "1", unit: "" }],
+        old,
+        products,
+      ),
+    ).toEqual(stale);
+    expect(
+      editedLines(
+        [
+          { original: 0, code: "1066", quantity: "1", unit: "" },
+          { original: 0, code: "1066", quantity: "1", unit: "" },
+        ],
+        old,
+        products,
+      ),
+    ).toEqual(stale);
+  });
+  it("validates the edit request itself", () => {
+    const base = {
+      revision: 1,
+      date: "2026-11-10",
+      remarks: "",
+      lines: [{ code: "1066", quantity: "1", unit: "" }],
+    };
+    expect(transferEditInput.safeParse(base).success).toBe(true);
+    expect(transferEditInput.safeParse({ ...base, lines: [] }).success).toBe(
+      false,
+    );
+    expect(
+      transferEditInput.safeParse({
+        ...base,
+        lines: [{ code: "1066", quantity: "0", unit: "" }],
+      }).success,
+    ).toBe(false);
+    expect(transferEditInput.safeParse({ ...base, revision: 0 }).success).toBe(
+      false,
+    );
   });
 });

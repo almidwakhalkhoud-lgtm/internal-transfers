@@ -41,7 +41,15 @@ const select = {
   approval: true,
   total: true,
   lines: true,
-  qbmEntry: { select: { reference: true, enteredAt: true } },
+  revision: true,
+  editedAt: true,
+  editedByName: true,
+  revisions: {
+    orderBy: { revision: "desc" },
+    take: 1,
+    select: { reason: true },
+  },
+  qbmEntry: { select: { reference: true, enteredAt: true, revision: true } },
   // Who signed, never the signature image: the QBM program shows the count.
   signatures: {
     select: { side: true, signerName: true, signedAt: true },
@@ -59,10 +67,18 @@ function shape(t: Prisma.TransferGetPayload<{ select: typeof select }>) {
     createdBy: t.creatorName || t.creator.name,
     approval: t.approval,
     totalQuantity: t.total.toString(),
+    // 1 until an administrator edits it; each edit adds one.
+    revision: t.revision,
+    editedAt: t.editedAt?.toISOString() ?? null,
+    editedBy: t.editedByName ?? null,
+    editReason: t.revisions[0]?.reason ?? null,
     qbm: t.qbmEntry
       ? {
           reference: t.qbmEntry.reference,
           enteredAt: t.qbmEntry.enteredAt.toISOString(),
+          // The revision typed into QBM; outdated means edited since.
+          revision: t.qbmEntry.revision,
+          outdated: t.qbmEntry.revision < t.revision,
         }
       : null,
     signatures: t.signatures.map((s) => ({
@@ -70,12 +86,13 @@ function shape(t: Prisma.TransferGetPayload<{ select: typeof select }>) {
       signerName: s.signerName,
       signedAt: s.signedAt.toISOString(),
     })),
-    // Item notes stay in BUZZ; QBM only needs what is typed into its grid.
+    // The note goes into QBM too: at the end of the line's description (2026-11-14).
     items: (t.lines as SnapshotLine[]).map((l) => ({
       code: l.code,
       description: l.description,
       quantity: l.quantity,
       unit: l.unit,
+      note: l.note ?? "",
     })),
   };
 }
@@ -99,19 +116,33 @@ export async function integrationApi(
     const q = req.nextUrl.searchParams;
     const v = z
       .object({
-        entered: z.enum(["yes", "no", "all"]).default("no"),
+        // outdated: entered in QBM, then edited by an administrator.
+        entered: z.enum(["yes", "no", "all", "outdated"]).default("no"),
         approval: z
           .enum(["PENDING", "APPROVED", "REJECTED", "RECEIVED"])
           .optional(),
         since: z.iso.date().optional(),
+        editedSince: z.iso.datetime().optional(),
         page: z.coerce.number().int().min(0).default(0),
       })
       .parse(Object.fromEntries(q));
+    // Prisma cannot compare two columns across a relation, so the edited
+    // entries are found first.
+    const outdated =
+      v.entered === "outdated"
+        ? (
+            await db.$queryRaw<{ id: string }[]>`
+              SELECT t.id FROM "Transfer" t JOIN "QbmEntry" q ON q."transferId" = t.id
+              WHERE q.revision < t.revision`
+          ).map((r) => r.id)
+        : [];
     const where: Prisma.TransferWhereInput = {
       ...(v.entered === "no" ? { qbmEntry: null } : {}),
       ...(v.entered === "yes" ? { qbmEntry: { isNot: null } } : {}),
+      ...(v.entered === "outdated" ? { id: { in: outdated } } : {}),
       ...(v.approval ? { approval: v.approval } : {}),
       ...(v.since ? { date: { gte: new Date(v.since) } } : {}),
+      ...(v.editedSince ? { editedAt: { gte: new Date(v.editedSince) } } : {}),
     };
     const size = 50;
     const [items, count] = await Promise.all([
@@ -152,8 +183,29 @@ export async function integrationApi(
       const { reference } = z
         .object({ reference: z.string().trim().min(1).max(100) })
         .parse(await req.json());
-      // Repeating the same call is harmless; a different reference is not.
+      // Repeating the same call is harmless; a different reference is not,
+      // unless an edit came after the entry: then the call records that the
+      // edited revision is entered, under the same or a new QBM number.
       if (t.qbmEntry) {
+        if (t.qbmEntry.revision < t.revision) {
+          const result = await db.qbmEntry.updateMany({
+            where: { transferId: t.id, revision: t.qbmEntry.revision },
+            data: {
+              reference,
+              revision: t.revision,
+              enteredAt: new Date(),
+              keyId: key.id,
+            },
+          });
+          if (result.count === 1)
+            await audit(`api:${key.name}`, "QBM_ENTRY_UPDATED", t.id, {
+              number: t.number,
+              revision: String(t.revision),
+              from: t.qbmEntry.reference,
+              reference,
+            });
+          return NextResponse.json(shape(await transferFor(t.id)));
+        }
         if (t.qbmEntry.reference !== reference)
           throw new HttpError(
             409,
@@ -162,7 +214,12 @@ export async function integrationApi(
         return NextResponse.json(shape(t));
       }
       await db.qbmEntry.create({
-        data: { transferId: t.id, reference, keyId: key.id },
+        data: {
+          transferId: t.id,
+          reference,
+          keyId: key.id,
+          revision: t.revision,
+        },
       });
       await audit(`api:${key.name}`, "QBM_ENTERED", t.id, {
         number: t.number,
@@ -188,6 +245,11 @@ export async function integrationApi(
     // Approval follows the QBM entry, never stands in for it.
     if (!t.qbmEntry)
       throw new HttpError(409, "Record the QBM entry before approving");
+    if (t.qbmEntry.revision < t.revision)
+      throw new HttpError(
+        409,
+        "The transfer was edited; record the QBM entry of the edited version before approving",
+      );
     // Repeating the call is harmless.
     if (t.approval === "APPROVED") return NextResponse.json(shape(t));
     if (!allowedTransition(t.approval, "APPROVED"))

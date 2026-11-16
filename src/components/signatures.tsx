@@ -1,11 +1,11 @@
 "use client";
 import { dateLocale } from "@/lib/i18n";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Eraser, Signature } from "lucide-react";
+import { Eraser, Signature, Trash2 } from "lucide-react";
 import { api } from "@/lib/client";
 import { useBuzz } from "./shell";
 import { Modal } from "./modal";
-import { Badge, Button, Card } from "./ui";
+import { Badge, Button, Card, Field, cx, inputStyles } from "./ui";
 import { PdfPrintButton } from "./pdf-print";
 type Side = "SOURCE" | "DESTINATION";
 export type SignatureView = {
@@ -70,9 +70,10 @@ export function SignaturesCard({
   canSign: Side[];
   onSigned: () => void;
 }) {
-  const { t } = useBuzz();
+  const { t, user } = useBuzz();
   const date = useDate();
   const [signing, setSigning] = useState<Side | null>(null);
+  const [removing, setRemoving] = useState<SignatureView | null>(null);
   // Opened from Transfer history to sign: bring the boxes into view.
   useEffect(() => {
     if (window.location.hash === "#signatures")
@@ -118,11 +119,27 @@ export function SignaturesCard({
                       className="h-24 w-full rounded-lg border border-line bg-white object-contain"
                     />
                   )}
-                  <div className="text-sm">
-                    <strong className="font-semibold">{s.signerName}</strong>
-                    <span className="block text-xs text-subtle">
-                      {date(s.signedAt)}
+                  <div className="flex items-end justify-between gap-2 text-sm">
+                    <span>
+                      <strong className="font-semibold">{s.signerName}</strong>
+                      <span className="block text-xs text-subtle">
+                        {date(s.signedAt)}
+                      </span>
                     </span>
+                    {user.role === "ADMIN" && (
+                      <Button
+                        variant="danger"
+                        onClick={() => setRemoving(s)}
+                        aria-label={`${t("Remove signature")} · ${t(
+                          side === "SOURCE"
+                            ? "Sender signature"
+                            : "Receiver signature",
+                        )}`}
+                      >
+                        <Trash2 size={15} />
+                        {t("Remove signature")}
+                      </Button>
+                    )}
                   </div>
                 </>
               ) : canSign.includes(side) ? (
@@ -150,6 +167,17 @@ export function SignaturesCard({
           onClose={() => setSigning(null)}
           onSigned={() => {
             setSigning(null);
+            onSigned();
+          }}
+        />
+      )}
+      {removing && (
+        <RemoveSignatureModal
+          transferId={transferId}
+          signature={removing}
+          onClose={() => setRemoving(null)}
+          onRemoved={() => {
+            setRemoving(null);
             onSigned();
           }}
         />
@@ -209,6 +237,76 @@ function SignModal({
         <Button variant="primary" disabled={busy || !ink} onClick={save}>
           <Signature size={16} />
           {t(busy ? "Please wait…" : "Save signature")}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+// An administrator removes a signature (a wrong signer, a spoiled drawing)
+// so that side can be signed again. The audit log keeps who signed and when.
+function RemoveSignatureModal({
+  transferId,
+  signature,
+  onClose,
+  onRemoved,
+}: {
+  transferId: string;
+  signature: SignatureView;
+  onClose: () => void;
+  onRemoved: () => void;
+}) {
+  const { t, toast } = useBuzz();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function remove() {
+    setBusy(true);
+    try {
+      await api(
+        `sign/${transferId}`,
+        { side: signature.side, reason },
+        "DELETE",
+      );
+      toast(t("Signature removed"), "ok");
+      onRemoved();
+    } catch (e) {
+      toast(t((e as Error).message));
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Remove signature" onClose={() => !busy && onClose()}>
+      <p className="mt-0 mb-4 text-sm leading-relaxed text-muted">
+        {t(
+          "This side becomes unsigned and can be signed again. The audit log keeps who signed and when.",
+        )}
+      </p>
+      <dl className="m-0 mb-4 grid grid-cols-2 gap-3 rounded-xl bg-zinc-50 p-4 text-sm">
+        <dt className="text-subtle">
+          {t(
+            signature.side === "SOURCE"
+              ? "Sender signature"
+              : "Receiver signature",
+          )}
+        </dt>
+        <dd className="m-0 text-end font-semibold">{signature.signerName}</dd>
+      </dl>
+      <Field label={t("Reason (optional)")}>
+        <textarea
+          className={cx(inputStyles, "min-h-20 py-2")}
+          dir="auto"
+          value={reason}
+          maxLength={500}
+          rows={3}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </Field>
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+        <Button data-initial-focus disabled={busy} onClick={onClose}>
+          {t("Cancel")}
+        </Button>
+        <Button variant="dangerSolid" disabled={busy} onClick={remove}>
+          <Trash2 size={16} />
+          {t(busy ? "Please wait…" : "Remove signature")}
         </Button>
       </div>
     </Modal>

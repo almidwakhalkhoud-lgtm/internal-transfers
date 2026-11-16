@@ -618,6 +618,36 @@ export const fa: Record<string, string> = {
   "Use this when the number is out of step with QBM. The PDF is made again with the new number, and the next transfer number in Settings follows the highest number.":
     "وقتی شماره با QBM نمی‌خواند از این استفاده کنید. PDF با شمارهٔ جدید دوباره ساخته می‌شود و شمارهٔ انتقال بعدی در تنظیمات خودش با بالاترین شماره هماهنگ می‌شود.",
   TRANSFER_RENUMBERED: "تغییر شمارهٔ انتقال",
+  TRANSFER_EDITED: "ویرایش انتقال",
+  SIGNATURE_REMOVED: "حذف امضا",
+  "Remove signature": "حذف امضا",
+  "Signature removed": "امضا حذف شد",
+  "This side is not signed": "این طرف امضا نشده است",
+  "This side becomes unsigned and can be signed again. The audit log keeps who signed and when.":
+    "این طرف بدون امضا می‌شود و می‌توان دوباره امضا کرد. نام امضاکننده و زمان امضا در گزارش فعالیت‌ها می‌ماند.",
+  QBM_ENTRY_UPDATED: "ورود دوبارهٔ نسخهٔ ویرایش‌شده به QBM",
+  "Edit transfer": "ویرایش انتقال",
+  "Transfer edited": "انتقال ویرایش شد",
+  "The replaced version and its PDF are kept in the edit history, and the PDF is made again.":
+    "نسخهٔ قبلی و PDF آن در تاریخچهٔ ویرایش نگه داشته می‌شود و PDF دوباره ساخته می‌شود.",
+  "The signatures are removed: both sides sign the edited transfer again.":
+    "امضاها حذف می‌شوند: هر دو طرف باید انتقال ویرایش‌شده را دوباره امضا کنند.",
+  "It was entered in QBM, so the QBM program will see it as edited and enter it again.":
+    "این انتقال در QBM ثبت شده است؛ برنامهٔ QBM آن را ویرایش‌شده می‌بیند و دوباره ثبت می‌کند.",
+  New: "جدید",
+  "Add item by code": "افزودن کالا با کد",
+  Add: "افزودن",
+  "Reason for the edit (optional)": "دلیل ویرایش (اختیاری)",
+  "Edited after QBM entry": "ویرایش‌شده پس از ثبت در QBM",
+  Edited: "ویرایش‌شده",
+  revision: "نسخهٔ",
+  "Edit history": "تاریخچهٔ ویرایش",
+  "Replaced by": "جایگزین‌شده توسط",
+  "Signed by": "امضاشده توسط",
+  "Nothing was changed": "هیچ تغییری انجام نشده است",
+  "PDF not found": "PDF پیدا نشد",
+  "The transfer was edited; record the QBM entry of the edited version before approving":
+    "انتقال ویرایش شده است؛ پیش از تأیید، ورود نسخهٔ ویرایش‌شده به QBM را ثبت کنید",
   "Works here": "محل کار",
   "View only": "فقط مشاهده",
   "Can sign both sides": "اجازهٔ امضای هر دو طرف",

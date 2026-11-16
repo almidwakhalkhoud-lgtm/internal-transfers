@@ -927,6 +927,7 @@ const auditActions = [
   "NOTIFICATIONS_OFF",
   "QBM_ENTERED",
   "QBM_ENTRY_REMOVED",
+  "QBM_ENTRY_UPDATED",
   "API_KEY_CREATED",
   "API_KEY_REVOKED",
   "API_KEY_UPDATED",
@@ -934,6 +935,8 @@ const auditActions = [
   "TRANSFER_DELETED",
   "TRANSFER_SIGNED",
   "TRANSFER_RENUMBERED",
+  "TRANSFER_EDITED",
+  "SIGNATURE_REMOVED",
   "DRAFT_DELETED",
   "APPROVED",
   "REJECTED",
@@ -965,6 +968,7 @@ const actionNames: Record<string, string> = {
   NOTIFICATIONS_OFF: "Notifications off",
   QBM_ENTERED: "Entered in QBM",
   QBM_ENTRY_REMOVED: "QBM entry removed",
+  QBM_ENTRY_UPDATED: "Edited version entered in QBM",
   API_KEY_CREATED: "API key created",
   API_KEY_REVOKED: "API key revoked",
   API_KEY_UPDATED: "API key changed",
@@ -977,6 +981,8 @@ const actionNames: Record<string, string> = {
   TRANSFER_DELETED: "Transfer deleted",
   TRANSFER_SIGNED: "Transfer signed",
   TRANSFER_RENUMBERED: "Transfer number changed",
+  TRANSFER_EDITED: "Transfer edited",
+  SIGNATURE_REMOVED: "Signature removed",
   DRAFT_DELETED: "Draft deleted",
   APPROVED: "Transfer approved",
   REJECTED: "Transfer rejected",
@@ -1048,6 +1054,28 @@ function describe(a: AuditEntry, t: (key: string) => string) {
         .join(" · ");
     case "TRANSFER_RENUMBERED":
       return `${s("from")} → ${s("to")}`;
+    case "SIGNATURE_REMOVED":
+      return [
+        s("number") || a.targetName,
+        s("side") && t(s("side") === "SOURCE" ? "Sender" : "Receiver"),
+        s("signerName"),
+        s("reason"),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "TRANSFER_EDITED": {
+      const before = (d.before ?? {}) as Record<string, unknown>;
+      const after = (d.after ?? {}) as Record<string, unknown>;
+      return [
+        s("number") || a.targetName,
+        s("revision") && `${t("revision")} ${s("revision")}`,
+        before.total !== after.total &&
+          `${t("Total quantity")} ${String(before.total)} → ${String(after.total)}`,
+        s("reason"),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
     case "DRAFT_DELETED":
       return s("number") || (s("lines") && `${s("lines")} ${t("items")}`);
     case "PRODUCT_CREATED":
@@ -1080,6 +1108,7 @@ function describe(a: AuditEntry, t: (key: string) => string) {
       return `${t("Imported")}: ${s("imported")} · ${t("Conflicts")}: ${s("conflicts")}`;
     case "QBM_ENTERED":
     case "QBM_ENTRY_REMOVED":
+    case "QBM_ENTRY_UPDATED":
       return [s("number"), s("reference") && `QBM ${s("reference")}`]
         .filter(Boolean)
         .join(" · ");
