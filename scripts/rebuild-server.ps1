@@ -12,13 +12,23 @@ Set-Location $app
 $statusFile = Join-Path $app 'output\server\status.json'
 
 # A migration changes the live database, so a verified backup comes first.
-Write-Output 'Backing up...'
-& (Join-Path $PSScriptRoot 'backup-local-server.ps1')
-for ($i = 0; $i -lt 60; $i++) {
-    try { if ((Get-Content $statusFile -Raw | ConvertFrom-Json).webHealthy) { break } } catch { }
-    Start-Sleep 1
-}
+# The backup pauses the site through the supervisor, so it needs a running
+# one. When the server is already down (a failed build: the supervisor will
+# not start without one), nobody can have changed the data since the last
+# backup, and the rebuild goes on without a new one.
 $supervisor = (Get-Content $statusFile -Raw | ConvertFrom-Json).pid
+if (Get-Process -Id $supervisor -ErrorAction SilentlyContinue) {
+    Write-Output 'Backing up...'
+    & (Join-Path $PSScriptRoot 'backup-local-server.ps1')
+    for ($i = 0; $i -lt 60; $i++) {
+        try { if ((Get-Content $statusFile -Raw | ConvertFrom-Json).webHealthy) { break } } catch { }
+        Start-Sleep 1
+    }
+    $supervisor = (Get-Content $statusFile -Raw | ConvertFrom-Json).pid
+} else {
+    $latest = Get-ChildItem 'D:\Backups\BUZZ' -Directory -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
+    Write-Warning "The server is not running, so no new backup is taken. Latest backup: $($latest.FullName)"
+}
 
 Write-Output 'Stopping the BUZZ server...'
 Disable-ScheduledTask -TaskName $task | Out-Null
@@ -35,8 +45,14 @@ try {
     npm run db:deploy
     if ($LASTEXITCODE -ne 0) { throw 'Database migration failed; the previous build is kept. Check the output above.' }
     Write-Output 'Building...'
-    npm run build
-    $built = $LASTEXITCODE -eq 0
+    # In an interactive window next build can stop at an upgrade menu, and
+    # choosing an upgrade there stops the build and drops its output while
+    # the site is down. A plain terminal never shows it; upgrades are done
+    # on purpose, separately, never in the middle of a rebuild.
+    $term = $env:TERM
+    $env:TERM = 'dumb'
+    try { npm run build } finally { $env:TERM = $term }
+    $built = $LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $app '.next\BUILD_ID'))
     if (-not $built) { Write-Warning 'Build failed. Starting the server again; check the output above.' }
 } finally {
     Remove-Item (Join-Path $app '.postgres\server-stop') -ErrorAction SilentlyContinue
