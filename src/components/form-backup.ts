@@ -4,12 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Keeps what someone is typing on this device, so a reload, a phone call that
 // sends the tablet back to the home screen, or a sign-out does not lose it.
 // The backup belongs to one user and is dropped after a week or once sent.
+// `keep` is false while the form holds nothing beyond what the server has
+// (a saved draft, opened or just saved, unchanged): then there is nothing
+// to keep, and a reload must not bring it back as unsaved work.
 const maxAge = 7 * 24 * 3600_000;
 export function useFormBackup<T>(
   key: string,
   value: T,
   ready: boolean,
   restore: (saved: T) => boolean,
+  keep = true,
 ) {
   const started = useRef(false);
   const loaded = useRef(false);
@@ -40,11 +44,13 @@ export function useFormBackup<T>(
   useEffect(() => {
     if (!loaded.current) return;
     try {
-      localStorage.setItem(key, `{"savedAt":${Date.now()},"value":${json}}`);
+      if (keep)
+        localStorage.setItem(key, `{"savedAt":${Date.now()},"value":${json}}`);
+      else localStorage.removeItem(key);
     } catch {
       /* A full or blocked storage only loses the backup. */
     }
-  }, [key, json]);
+  }, [key, json, keep]);
   const clear = useCallback(() => {
     setRestored(false);
     try {

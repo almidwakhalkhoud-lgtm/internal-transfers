@@ -152,7 +152,8 @@ async function confirmOnce(user: User, input: unknown) {
             throw new HttpError(400, `Invalid unit for ${p.code}`);
           if (line.description && !renamable(p.code))
             throw new HttpError(400, `The name of ${p.code} cannot be changed`);
-          if (seen.has(p.id) && !line.duplicateAccepted)
+          // Each ss line names its own service, so repeating ss is fine.
+          if (seen.has(p.id) && !line.duplicateAccepted && !renamable(p.code))
             throw new HttpError(400, `Review duplicate product ${p.code}`);
           seen.add(p.id);
           return {

@@ -181,7 +181,9 @@ export function useLines(initialLineId: string) {
           description: undefined,
           error: undefined,
         });
-        if (existing) {
+        // "ss" (midwakh service) is named per line, so several ss lines
+        // are different services, not a repeat: only other codes warn.
+        if (existing && !renamable(product.code)) {
           setDuplicate({ id, existingId: existing.id, product });
           return;
         }
@@ -283,8 +285,21 @@ export function TransferForm({
     lines,
     name: draftName,
   };
-  // Typing is kept on this device until the transfer is confirmed, so a
-  // reload or a sign-out does not lose it.
+  // The form as the server has it, after opening a saved draft; while the
+  // form still equals it there is no unsaved work to keep on the device.
+  const [serverCopy, setServerCopy] = useState("");
+  const snapshot = (d: typeof data, k = key) =>
+    JSON.stringify({
+      key: k,
+      sourceId: d.sourceId,
+      destinationId: d.destinationId,
+      date: d.date,
+      remarks: d.remarks,
+      lines: d.lines,
+      name: d.name,
+    });
+  // Typing is kept on this device until the transfer is confirmed or saved
+  // as a draft, so a reload or a sign-out does not lose it.
   const backup = useFormBackup(
     `buzz:transfer-form:${user.id}`,
     { key, ...data },
@@ -302,6 +317,7 @@ export function TransferForm({
       }
       return used;
     },
+    snapshot(data) !== serverCopy,
   );
   // A draft has no number yet: it shows the name it was given (or its
   // route) and when it was saved. A new name is suggested from the form.
@@ -601,19 +617,38 @@ export function TransferForm({
                   className="flex items-center gap-2"
                 >
                   <Button
-                    className="flex-1 justify-start"
+                    className="min-w-0 flex-1 justify-start"
+                    title={draftLabel(d)}
                     onClick={() => {
+                      const source =
+                        own.length !== 1 ? d.data.sourceId : sourceId;
                       setKey(d.id);
                       setDraftName(d.data.name ?? "");
-                      if (own.length !== 1) setSource(d.data.sourceId);
+                      setSource(source);
                       setDestination(d.data.destinationId);
                       setDate(d.data.date);
                       setRemarks(d.data.remarks);
                       setLines(d.data.lines);
                       setNotice("");
+                      backup.clear();
+                      setServerCopy(
+                        snapshot(
+                          {
+                            sourceId: source,
+                            destinationId: d.data.destinationId,
+                            date: d.data.date,
+                            remarks: d.data.remarks,
+                            lines: d.data.lines,
+                            name: d.data.name ?? "",
+                          },
+                          d.id,
+                        ),
+                      );
                     }}
                   >
-                    {t("Open draft")} · {draftLabel(d)}
+                    <span className="truncate">
+                      {t("Open draft")} · {draftLabel(d)}
+                    </span>
                   </Button>
                   <PdfPrintButton
                     iconOnly
@@ -692,6 +727,12 @@ export function TransferForm({
             try {
               await save(asNew, newName);
               setNaming(false);
+              // Saved to the server: the form starts blank and the draft
+              // waits in Saved drafts, so nothing is left on the device.
+              backup.clear();
+              reset();
+              setDestination("");
+              setNotice("Draft saved");
             } catch (e) {
               setError((e as Error).message);
             } finally {

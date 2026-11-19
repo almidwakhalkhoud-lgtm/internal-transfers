@@ -388,7 +388,20 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
     setRemarks(d.remarks ?? "");
     if (d.lines?.length) setLines(d.lines);
   };
-  // Typing is kept on this device until the request is sent.
+  // The form as the server has it, after opening a saved draft; while the
+  // form still equals it there is no unsaved work to keep on the device.
+  const [serverCopy, setServerCopy] = useState("");
+  const snapshot = (d: RequestDraftData, k = draftKey) =>
+    JSON.stringify({
+      draftKey: k,
+      requesterId: d.requesterId,
+      supplierId: d.supplierId,
+      remarks: d.remarks,
+      lines: d.lines,
+      name: d.name,
+    });
+  // Typing is kept on this device until the request is sent or saved as a
+  // draft.
   const backup = useFormBackup(
     `buzz:request-form:${user.id}`,
     { draftKey, ...data },
@@ -404,6 +417,7 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
       }
       return used;
     },
+    snapshot(data) !== serverCopy,
   );
   const name = (id: string) => locations.find((l) => l.id === id)?.name;
   const suggestedName = `${name(supplierId) ?? "—"} → ${name(requesterId) ?? "—"} · ${validLines.length} ${t("items")}`;
@@ -433,11 +447,12 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
     try {
       const id = asNew ? crypto.randomUUID() : draftKey;
       await api("request-drafts", { id, data: { ...data, name: newName } });
-      if (asNew) setDraftKey(id);
-      setDraftName(newName);
       setNaming(false);
       toast(t("Draft saved"), "ok");
       void loadDrafts();
+      // Saved to the server: the form starts blank and the draft waits in
+      // Saved drafts, so nothing is left on the device.
+      startOver();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -602,13 +617,29 @@ export function RequestForm({ initialLineId }: { initialLineId: string }) {
                   className="flex items-center gap-2"
                 >
                   <Button
-                    className="flex-1 justify-start"
+                    className="min-w-0 flex-1 justify-start"
+                    title={draftLabel(d)}
                     onClick={() => {
                       setDraftKey(d.id);
                       fill(d.data);
+                      backup.clear();
+                      setServerCopy(
+                        snapshot(
+                          {
+                            requesterId: d.data.requesterId || requesterId,
+                            supplierId: d.data.supplierId ?? "",
+                            remarks: d.data.remarks ?? "",
+                            lines: d.data.lines?.length ? d.data.lines : lines,
+                            name: d.data.name ?? "",
+                          },
+                          d.id,
+                        ),
+                      );
                     }}
                   >
-                    {t("Open draft")} · {draftLabel(d)}
+                    <span className="truncate">
+                      {t("Open draft")} · {draftLabel(d)}
+                    </span>
                   </Button>
                   <PdfPrintButton
                     iconOnly

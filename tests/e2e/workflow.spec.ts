@@ -792,9 +792,18 @@ test("saved drafts reopen from PostgreSQL with the complete entered data", async
     orderBy: { updatedAt: "desc" },
   });
   expect(saved.data).toMatchObject({ name: "Morning order" });
-  // New draft starts a blank form; the first draft stays saved.
-  await page.getByRole("button", { name: "New draft", exact: true }).click();
+  // Saving empties the form: the draft is on the server, so a reload does
+  // not bring it back as unsaved work on the device.
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByLabel("Code / Barcode 1", { exact: true }),
+  ).toHaveValue("");
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByText("Your unsaved transfer was restored on this device."),
+  ).toHaveCount(0);
   await page.getByLabel("Code / Barcode 1", { exact: true }).fill(p.code);
   await page.getByLabel("Code / Barcode 1", { exact: true }).press("Tab");
   await page.getByLabel("Quantity 1", { exact: true }).fill("2");
@@ -2100,7 +2109,14 @@ test("a request survives a reload on the device and can be saved as a draft", as
     where: { userId: "test-staff" },
     orderBy: { updatedAt: "desc" },
   });
-  await page.getByRole("button", { name: "Start over", exact: true }).click();
+  // Saving empties the form, and a reload brings nothing back: the draft
+  // is on the server.
+  await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByText("Your unsent request was restored on this device."),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("");
   await page.getByText(/^Saved drafts/).click();
   const draftForm = await page.request.get(
@@ -2119,6 +2135,19 @@ test("a request survives a reload on the device and can be saved as a draft", as
     .getByRole("button", { name: /^Open draft · Weekly cigarettes · / })
     .click();
   await expect(page.getByLabel("Quantity 1", { exact: true })).toHaveValue("3");
+  // An opened draft left unchanged is not kept on the device either.
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz:request-form:test-staff")),
+    )
+    .toBe(null);
+  // Changed, it is kept until sent.
+  await page.getByLabel("Quantity 1", { exact: true }).fill("4");
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("buzz:request-form:test-staff")),
+    )
+    .not.toBe(null);
   await page.getByRole("button", { name: "Send request", exact: true }).click();
   await expect(page).toHaveURL(/\/requests\/(?!new$)[^/]+$/);
   // Sending removes the draft and the device copy.
@@ -2566,6 +2595,69 @@ test("the bell opens a panel to read and acknowledge alerts in place", async ({
   expect(n.acknowledgedAt).not.toBe(null);
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
+});
+test("ss may repeat without the duplicate warning, other codes still warn", async ({
+  page,
+}) => {
+  const ss = await db.product.upsert({
+    where: { code: "SS" },
+    create: {
+      code: "SS",
+      description: "Midwakh service",
+      units: [],
+      source: "TEST FIXTURE",
+    },
+    update: {},
+  });
+  await login(page);
+  await page.goto("/new-transfer");
+  await page.waitForLoadState("networkidle");
+  for (const [n, service] of [
+    [1, "Midwakh cleaning"],
+    [2, "Midwakh repair"],
+  ] as const) {
+    await page.getByLabel(`Code / Barcode ${n}`, { exact: true }).fill("ss");
+    await page.getByLabel(`Code / Barcode ${n}`, { exact: true }).press("Tab");
+    await page
+      .getByLabel(`Product description ${n}`, { exact: true })
+      .fill(service);
+    await page.getByLabel(`Quantity ${n}`, { exact: true }).fill("1");
+    if (n === 1)
+      await page.getByRole("button", { name: "Add item", exact: true }).click();
+  }
+  await expect(
+    page.getByRole("dialog", { name: "Product already added" }),
+  ).toHaveCount(0);
+  // The server accepts repeated ss lines without the duplicate flag, and
+  // still refuses other repeated products without it.
+  const p = await db.product.findUniqueOrThrow({
+    where: { id: "real-no-unit" },
+  });
+  const line = (id: string, version: Date, description?: string) => ({
+    productId: id,
+    version: version.toISOString(),
+    quantity: "1",
+    unit: "",
+    ...(description ? { description } : {}),
+  });
+  const ok = await post(
+    page.request,
+    "transfers",
+    await draft(page.request, [
+      line(ss.id, ss.updatedAt, "Midwakh cleaning"),
+      line(ss.id, ss.updatedAt, "Midwakh repair"),
+    ]),
+  );
+  expect(ok.ok()).toBe(true);
+  const refused = await post(
+    page.request,
+    "transfers",
+    await draft(page.request, [
+      line(p.id, p.updatedAt),
+      line(p.id, p.updatedAt),
+    ]),
+  );
+  expect(refused.status()).toBe(400);
 });
 test("ss is named per line in a new request and in items the supplier adds", async ({
   page,

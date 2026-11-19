@@ -25,6 +25,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { EditTransferModal } from "./transfer-edit";
+import { PdfPrintButton } from "./pdf-print";
 import { api } from "@/lib/client";
 import { hasMenu } from "@/lib/permissions";
 import { PageTitle, NewTransferLink, Status, useBuzz } from "./shell";
@@ -647,10 +648,28 @@ export function DetailPage({ id }: { id: string }) {
       <PageTitle
         title="Transfer details"
         action={
-          <Link href="/transfers" className={buttonStyles.secondary}>
-            <ArrowRight size={16} className="ltr:rotate-180" />
-            {t("Back")}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {/* On a phone the PDF actions below are far down the page, under
+                the items and the signatures; printing starts here. */}
+            {data && (
+              <PdfPrintButton
+                // The version makes a new signature or an edit fetch the
+                // PDF again instead of printing the one kept from before.
+                url={`/api/transfers/${data.id}/pdf?v=${[
+                  data.revision,
+                  ...(data.signatures as SignatureView[]).map((s) =>
+                    new Date(s.signedAt).getTime(),
+                  ),
+                ].join(".")}`}
+                fileName={`${data.number}.pdf`}
+                label={t("Print")}
+              />
+            )}
+            <Link href="/transfers" className={buttonStyles.secondary}>
+              <ArrowRight size={16} className="ltr:rotate-180" />
+              {t("Back")}
+            </Link>
+          </div>
         }
       />
       <LoadError error={error || err} load={load} />
